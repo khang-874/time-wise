@@ -5,7 +5,12 @@ import { sendMessage } from "../../shared/messages";
 import { computeRemainingSeconds } from "../../shared/timeUtils";
 
 interface UsePomodoroStateResult {
+  /** Full Pomodoro state synced from the service worker. */
   state: PomodoroState;
+  /**
+   * Display-ready remaining seconds, updated every second by a local interval.
+   * Resynced from the service worker on mount and after every command.
+   */
   remainingSeconds: number;
   start: () => Promise<void>;
   pause: () => Promise<void>;
@@ -13,6 +18,21 @@ interface UsePomodoroStateResult {
   skip: () => Promise<void>;
 }
 
+/**
+ * Syncs Pomodoro state with the background service worker and drives the
+ * visual countdown in the popup.
+ *
+ * @remarks
+ * **Countdown strategy:** the popup runs its own 1-second `setInterval` rather
+ * than receiving per-second pushes from the SW. This avoids keeping the SW
+ * awake just for ticking and handles the case where the popup is closed
+ * (interval is cleared on unmount). On every open the hook fetches ground
+ * truth from the SW via `GET_POMODORO_STATE`, so drift never accumulates.
+ *
+ * **Phase-change push:** the SW sends a best-effort `POMODORO_PHASE_CHANGE`
+ * message when an alarm fires. The hook listens for this to reset the display
+ * immediately without waiting for the user to reopen the popup.
+ */
 export function usePomodoroState(): UsePomodoroStateResult {
   const [state, setState] = useState<PomodoroState>(DEFAULT_POMODORO_STATE);
   const [remainingSeconds, setRemainingSeconds] = useState(
@@ -29,12 +49,11 @@ export function usePomodoroState(): UsePomodoroStateResult {
     }
   }, []);
 
-  // Sync on mount
   useEffect(() => {
     syncFromSW();
   }, [syncFromSW]);
 
-  // 1-second local countdown
+  // Start/stop the local 1-second countdown based on whether the timer is running.
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
 
@@ -49,7 +68,7 @@ export function usePomodoroState(): UsePomodoroStateResult {
     };
   }, [state.running, state.startedAt]);
 
-  // Listen for phase-change push from SW
+  // Listen for phase-change push from the SW so the display updates immediately.
   useEffect(() => {
     const listener = (msg: { type: string; payload?: PomodoroState }) => {
       if (msg.type === "POMODORO_PHASE_CHANGE" && msg.payload) {

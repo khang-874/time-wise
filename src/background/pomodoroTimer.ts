@@ -1,16 +1,25 @@
+/**
+ * @file Pomodoro state machine running inside the background service worker.
+ *
+ * @remarks
+ * All state is persisted to `chrome.storage.local` after every mutation so it
+ * survives service worker suspension. Phase transitions are driven by a named
+ * `chrome.alarms` entry (`"pomodoro_end"`) rather than `setTimeout`, because
+ * alarms survive suspension while timers do not.
+ */
+
 import type { PomodoroPhase, PomodoroSettings, PomodoroState } from "../shared/types";
 import {
   getPomodoroState,
   getSettings,
   setPomodoroState,
 } from "../shared/storage";
-import {
-  ALARM_POMODORO_END,
-  DEFAULT_POMODORO_STATE,
-  DEFAULT_SETTINGS,
-} from "../shared/constants";
+import { ALARM_POMODORO_END } from "../shared/constants";
 import { toDateKey } from "../shared/timeUtils";
 
+/**
+ * Returns the duration in seconds for a given phase based on current settings.
+ */
 function phaseDuration(phase: PomodoroPhase, settings: PomodoroSettings): number {
   switch (phase) {
     case "work": return settings.workMinutes * 60;
@@ -19,6 +28,15 @@ function phaseDuration(phase: PomodoroPhase, settings: PomodoroSettings): number
   }
 }
 
+/**
+ * Computes the fields that change when transitioning to the next phase.
+ *
+ * @remarks
+ * - After a work session: advances to `shortBreak`, or `longBreak` if
+ *   `cyclePosition` has reached `longBreakInterval`. Resets `cyclePosition` to 1 after a long break.
+ * - After any break: returns to `work`.
+ * - Detects a day rollover via `lastCompletionDate` and resets `completedToday` accordingly.
+ */
 function nextPhase(
   current: PomodoroState,
   settings: PomodoroSettings
@@ -49,12 +67,25 @@ function nextPhase(
   };
 }
 
+/**
+ * Creates (or recreates) the `"pomodoro_end"` alarm for the given state.
+ *
+ * @remarks
+ * The fire time is computed from `startedAt` and the remaining duration so the
+ * alarm is correct even if the service worker was suspended mid-session.
+ */
 async function scheduleAlarm(state: PomodoroState): Promise<void> {
   if (!state.startedAt) return;
   const fireAt = state.startedAt + (state.durationSeconds - state.elapsedSeconds) * 1000;
   chrome.alarms.create(ALARM_POMODORO_END, { when: fireAt });
 }
 
+/**
+ * Sends a desktop notification announcing the phase that is about to begin.
+ * No-op when `notificationsEnabled` is `false`.
+ *
+ * @param phase - The phase the user is transitioning **into**.
+ */
 function sendNotification(phase: PomodoroPhase, settings: PomodoroSettings): void {
   if (!settings.notificationsEnabled) return;
   const messages: Record<PomodoroPhase, string> = {
@@ -70,6 +101,12 @@ function sendNotification(phase: PomodoroPhase, settings: PomodoroSettings): voi
   });
 }
 
+/**
+ * Starts the timer for the current phase.
+ * No-op if the timer is already running.
+ *
+ * @returns The updated {@link PomodoroState} after starting.
+ */
 export async function startTimer(): Promise<PomodoroState> {
   const state = await getPomodoroState();
   if (state.running) return state;
@@ -85,6 +122,12 @@ export async function startTimer(): Promise<PomodoroState> {
   return updated;
 }
 
+/**
+ * Pauses the timer, accumulating elapsed time into `elapsedSeconds`.
+ * No-op if the timer is already paused.
+ *
+ * @returns The updated {@link PomodoroState} after pausing.
+ */
 export async function pauseTimer(): Promise<PomodoroState> {
   const state = await getPomodoroState();
   if (!state.running || !state.startedAt) return state;
@@ -101,6 +144,11 @@ export async function pauseTimer(): Promise<PomodoroState> {
   return updated;
 }
 
+/**
+ * Resets the current phase back to its full duration without advancing the cycle.
+ *
+ * @returns The updated {@link PomodoroState} after resetting.
+ */
 export async function resetTimer(): Promise<PomodoroState> {
   const state = await getPomodoroState();
   const settings = await getSettings();
@@ -116,6 +164,11 @@ export async function resetTimer(): Promise<PomodoroState> {
   return updated;
 }
 
+/**
+ * Immediately advances to the next phase without waiting for the timer to expire.
+ *
+ * @returns The updated {@link PomodoroState} after skipping.
+ */
 export async function skipPhase(): Promise<PomodoroState> {
   const state = await getPomodoroState();
   const settings = await getSettings();
@@ -133,6 +186,16 @@ export async function skipPhase(): Promise<PomodoroState> {
   return updated;
 }
 
+/**
+ * Handles the `"pomodoro_end"` alarm fired by Chrome when a phase completes.
+ *
+ * @remarks
+ * Transitions to the next phase, sends a desktop notification, persists state,
+ * and attempts a best-effort push to the popup via `chrome.runtime.sendMessage`
+ * (silently ignored if the popup is closed).
+ *
+ * @param alarmName - Name of the fired alarm; only `"pomodoro_end"` is handled.
+ */
 export async function handleAlarm(alarmName: string): Promise<void> {
   if (alarmName !== ALARM_POMODORO_END) return;
 
@@ -152,19 +215,28 @@ export async function handleAlarm(alarmName: string): Promise<void> {
   };
   await setPomodoroState(updated);
 
-  // Notify popup if open (best-effort)
   try {
     await chrome.runtime.sendMessage({ type: "POMODORO_PHASE_CHANGE", payload: updated });
   } catch {
-    // popup not open
+    // popup not open — expected
   }
 }
 
+/**
+ * Applies new settings, adjusting the active phase duration without losing elapsed progress.
+ *
+ * @remarks
+ * If the timer is running, it is paused first. The new `durationSeconds` is
+ * set, and `elapsedSeconds` is clamped to at most `newDuration - 1` to prevent
+ * an immediate phase completion on the next tick.
+ *
+ * @param settings - The new settings to apply.
+ * @returns The updated {@link PomodoroState} after applying the settings.
+ */
 export async function updateSettings(settings: PomodoroSettings): Promise<PomodoroState> {
   const state = await getPomodoroState();
   const wasRunning = state.running;
 
-  // Pause first if running, then update duration for current phase
   let updated = state;
   if (wasRunning) {
     updated = await pauseTimer();
@@ -180,9 +252,15 @@ export async function updateSettings(settings: PomodoroSettings): Promise<Pomodo
   return adjustedState;
 }
 
+/**
+ * Returns the current Pomodoro state, resetting `completedToday` if the calendar day has changed.
+ *
+ * @remarks
+ * Called by the message handler on every `GET_POMODORO_STATE` request so the
+ * popup always sees a fresh count after midnight.
+ */
 export async function getCurrentState(): Promise<PomodoroState> {
   const state = await getPomodoroState();
-  // Reset completedToday if it's a new day
   const today = toDateKey(new Date());
   if (state.lastCompletionDate && state.lastCompletionDate !== today) {
     const reset: PomodoroState = {

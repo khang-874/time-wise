@@ -1,6 +1,13 @@
+/**
+ * @file Registers and dispatches all messages from the popup to the service worker.
+ *
+ * @remarks
+ * The listener returns `true` to keep the message channel open for async responses,
+ * as required by the Chrome Extensions API when `sendResponse` is called asynchronously.
+ */
+
 import type { PopupRequest, PopupResponse } from "../shared/types";
-import { getUsage } from "../shared/storage";
-import { setSettings } from "../shared/storage";
+import { getUsage, setSettings } from "../shared/storage";
 import {
   startTimer,
   pauseTimer,
@@ -11,6 +18,12 @@ import {
 } from "./pomodoroTimer";
 import { handleFlushAlarm } from "./timeTracker";
 
+/**
+ * Registers the single `chrome.runtime.onMessage` listener that routes all
+ * {@link PopupRequest} messages to the appropriate handler function.
+ *
+ * Call once during service worker initialisation (`src/background/index.ts`).
+ */
 export function registerMessageHandler(): void {
   chrome.runtime.onMessage.addListener(
     (
@@ -26,6 +39,9 @@ export function registerMessageHandler(): void {
   );
 }
 
+/**
+ * Dispatches a typed {@link PopupRequest} to the correct handler and returns a typed {@link PopupResponse}.
+ */
 async function handleMessage(request: PopupRequest): Promise<PopupResponse> {
   switch (request.type) {
     case "GET_POMODORO_STATE": {
