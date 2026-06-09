@@ -67,7 +67,3 @@ export async function getSettings(): Promise<PomodoroSettings> {
 export async function setSettings(settings: PomodoroSettings): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEY_SETTINGS]: settings });
 }
-
-export async function getTodayUsage(): Promise<DailyUsage> {
-  return getUsage(toDateKey(new Date()));
-}

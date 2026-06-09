@@ -195,5 +195,3 @@ export async function getCurrentState(): Promise<PomodoroState> {
   }
   return state;
 }
-
-export { DEFAULT_SETTINGS, DEFAULT_POMODORO_STATE };
