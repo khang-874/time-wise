@@ -64,6 +64,20 @@ export async function startTracking(tabId: number, url: string): Promise<void> {
 }
 
 /**
+ * Resumes tracking the current host if the window is focused.
+ *
+ * @remarks
+ * Called when the system becomes active after idle/locked, or when resuming
+ * from a suspended state. Flushes any previous session before resuming.
+ */
+async function resumeTracking(): Promise<void> {
+  await flushTime();
+  if (currentHost && isWindowFocused) {
+    sessionStart = Date.now();
+  }
+}
+
+/**
  * Handles `chrome.tabs.onActivated` — resolves the tab URL then delegates to {@link startTracking}.
  *
  * @param tabId - ID of the newly active tab.
@@ -110,10 +124,8 @@ export async function handleFocusChanged(windowId: number): Promise<void> {
     isWindowFocused = true;
     try {
       const [tab] = await chrome.tabs.query({ active: true, windowId });
-      if (tab && tab.id != null) {
-        activeTabId = tab.id;
-        currentHost = getHost(tab.url ?? "");
-        sessionStart = currentHost ? Date.now() : null;
+      if (tab && tab.id != null && tab.url) {
+        await startTracking(tab.id, tab.url);
       }
     } catch {
       // window may have closed between the event firing and the query
@@ -135,9 +147,7 @@ export async function handleIdle(state: chrome.idle.IdleState): Promise<void> {
     await flushTime();
     sessionStart = null;
   } else if (state === "active") {
-    if (currentHost) {
-      sessionStart = Date.now();
-    }
+    await resumeTracking();
   }
 }
 
@@ -163,10 +173,7 @@ export async function handleTabRemoved(tabId: number): Promise<void> {
  * the same seconds on the next flush.
  */
 export async function handleFlushAlarm(): Promise<void> {
-  await flushTime();
-  if (currentHost && isWindowFocused) {
-    sessionStart = Date.now();
-  }
+  await resumeTracking();
 }
 
 /** @internal Returns a snapshot of module state for use in tests. */

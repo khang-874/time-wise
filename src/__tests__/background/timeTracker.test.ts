@@ -146,6 +146,28 @@ describe("handleIdle", () => {
     await handleIdle("active");
     expect(_getState().sessionStart).not.toBeNull();
   });
+
+  it("does not resume session on active when window is unfocused", async () => {
+    // Start tracking while window is focused
+    await startTracking(1, "https://github.com");
+    vi.advanceTimersByTime(10000);
+
+    // Window loses focus
+    await handleFocusChanged(chrome.windows.WINDOW_ID_NONE);
+    mockSet.mockClear();
+
+    // System goes idle (while window is still unfocused)
+    await handleIdle("idle");
+
+    // System comes back active (but window still unfocused)
+    await handleIdle("active");
+
+    // Should NOT resume tracking because window is unfocused
+    // (we shouldn't have any new tracking time)
+    const stateAfterIdle = _getState();
+    expect(stateAfterIdle.isWindowFocused).toBe(false);
+    expect(stateAfterIdle.sessionStart).toBeNull();
+  });
 });
 
 describe("handleFlushAlarm", () => {
@@ -216,6 +238,29 @@ describe("handleFocusChanged", () => {
     await handleFocusChanged(1);
     expect(_getState().isWindowFocused).toBe(true);
     expect(_getState().currentHost).toBe("github.com");
+  });
+
+  it("flushes previous session when window regains focus on a different tab", async () => {
+    // Start tracking on tab 1
+    await startTracking(1, "https://github.com");
+    vi.advanceTimersByTime(10000);
+
+    // Window is still focused but we'll simulate switching tabs while refocusing
+    // (This is an edge case where the tab switched before the focus event fired)
+    mockSet.mockClear();
+
+    (chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 2, url: "https://youtube.com" },
+    ]);
+    await handleFocusChanged(1); // Regain focus, but now active tab is 2
+
+    // Should have flushed github.com (10 seconds) before switching to youtube.com
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "usage_2024-06-08": expect.objectContaining({ "github.com": 10 }),
+      })
+    );
+    expect(_getState().currentHost).toBe("youtube.com");
   });
 });
 
