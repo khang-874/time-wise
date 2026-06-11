@@ -16,7 +16,7 @@ npm run dev           # vite dev with CRXJS hot reload
 
 All mutable state lives in `chrome.storage.local`. The popup is a thin display layer — it sends typed messages to the SW and reads from storage. The SW can be suspended by Chrome at any time, so nothing important is kept in memory.
 
-- `src/background/timeTracker.ts` — tracks the active tab domain and flushes elapsed seconds on tab/window/idle events and once per minute via a `chrome.alarms` flush alarm
+- `src/background/timeTracker.ts` — tracks the active tab domain and flushes elapsed seconds on tab/window/idle events and once per minute via a `chrome.alarms` flush alarm; persists tracking state (`TrackerState`) to storage so it survives SW suspension
 - `src/background/pomodoroTimer.ts` — Pomodoro state machine; uses `startedAt` (epoch ms) + `elapsedSeconds` so remaining time can be recomputed after SW suspension; phase transitions driven by a named `chrome.alarms` entry (`"pomodoro_end"`)
 - `src/background/messageHandler.ts` — single `chrome.runtime.onMessage` listener; switches on message type and delegates to the appropriate module
 - `src/background/index.ts` — only registers Chrome event listeners; contains no business logic; excluded from coverage
@@ -31,7 +31,7 @@ All mutable state lives in `chrome.storage.local`. The popup is a thin display l
 ### Shared layer
 
 - **`src/shared/storage.ts`** — the ONLY place that calls `chrome.storage.local`. All other files import from here. This keeps mocking simple in tests.
-- **`src/shared/types.ts`** — single source of truth for all interfaces (`PomodoroState`, `PomodoroSettings`, `DailyUsage`, message union types)
+- **`src/shared/types.ts`** — single source of truth for all interfaces (`PomodoroState`, `PomodoroSettings`, `DailyUsage`, `TrackerState`, message union types)
 - **`src/shared/timeUtils.ts`** — pure functions only; fully unit-tested
 
 ### Message protocol
@@ -56,12 +56,15 @@ type PopupRequest =
 | `usage_YYYY-MM-DD` | `Record<hostname, seconds>` |
 | `pomodoroState` | `PomodoroState` |
 | `settings` | `PomodoroSettings` |
+| `trackerState` | `TrackerState` — active tab, host, session start, focus flag; recovered on SW wake-up |
 
 ## Testing
 
 Chrome APIs are mocked globally in `src/__tests__/setup.ts` via `vi.stubGlobal("chrome", chromeMock)`. Every test file gets a clean mock via `vi.clearAllMocks()` in `beforeEach`.
 
 **Do NOT use `vi.useFakeTimers()` in React component tests.** It fakes `setTimeout`, which breaks `waitFor` from `@testing-library/react`. Use it only in pure unit tests (timeUtils, storage, background modules).
+
+**SW suspension tests** — `timeTracker.test.ts` has a `"service worker suspension recovery"` describe block that simulates Chrome killing the SW by calling `_resetState()` (wipes module vars) and mocking `chrome.storage.local.get` to return persisted `TrackerState`. Use this pattern when testing any new code that must survive SW restarts.
 
 Coverage is configured in `vitest.config.ts`. The following are excluded:
 - `src/__tests__/**`
@@ -78,3 +81,5 @@ Coverage is configured in `vitest.config.ts`. The following are excluded:
 **Popup-side countdown** — the popup runs its own 1-second `setInterval` rather than having the SW push ticks. SW-side ticking would fight Chrome's suspension logic and generate unnecessary wake-ups.
 
 **Single storage boundary** — only `src/shared/storage.ts` touches `chrome.storage.local`. Migrating to IndexedDB in the future is a one-file change.
+
+**Persisted tracker state** — `timeTracker.ts` persists `TrackerState` (active tab, host, session start, focus flag) to storage on every state mutation and restores it lazily via `ensureStateLoaded()` on the first call after SW restart. This prevents time loss when Chrome suspends the SW while the user stays on a page.
