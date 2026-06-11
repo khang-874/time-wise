@@ -6,6 +6,7 @@ export const ALARM_POMODORO_END = "pomodoro_end";
 export const STORAGE_KEY_SETTINGS = "settings";
 export const STORAGE_KEY_POMODORO = "pomodoroState";
 export const STORAGE_KEY_USAGE_PREFIX = "usage_";
+export const STORAGE_KEY_TRACKER = "trackerState";
 
 export const IDLE_THRESHOLD_SECONDS = 60;
 

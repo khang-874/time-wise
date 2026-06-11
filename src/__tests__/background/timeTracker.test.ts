@@ -12,6 +12,8 @@ import {
   _resetState,
   _getState,
 } from "../../background/timeTracker";
+import { STORAGE_KEY_TRACKER } from "../../shared/constants";
+import type { TrackerState } from "../../shared/types";
 
 const mockGet = chrome.storage.local.get as ReturnType<typeof vi.fn>;
 const mockSet = chrome.storage.local.set as ReturnType<typeof vi.fn>;
@@ -285,5 +287,197 @@ describe("handleTabRemoved", () => {
     mockSet.mockClear();
     await handleTabRemoved(99);
     expect(mockSet).not.toHaveBeenCalled();
+  });
+});
+
+describe("service worker suspension recovery", () => {
+  /**
+   * Simulates Chrome suspending and restarting the service worker.
+   * All module-level variables are wiped (via _resetState), and
+   * chrome.storage.local.get is set up to return the given persisted state.
+   */
+  function simulateSWRestart(saved: TrackerState) {
+    _resetState();
+    mockGet.mockImplementation((keys: string | string[]) => {
+      const keyArr = Array.isArray(keys) ? keys : [keys];
+      const result: Record<string, unknown> = {};
+      for (const k of keyArr) {
+        if (k === STORAGE_KEY_TRACKER) result[k] = saved;
+      }
+      return Promise.resolve(result);
+    });
+  }
+
+  it("flush alarm recovers state and saves elapsed time after SW restart", async () => {
+    // 1. Start tracking github.com
+    await startTracking(1, "https://github.com");
+    const sessionStartTime = Date.now();
+
+    // 2. Advance 90 seconds — SW would normally flush at 60s, but let's
+    //    simulate that Chrome suspended the SW instead
+    vi.advanceTimersByTime(90_000);
+
+    // 3. SW is killed — all module state gone
+    simulateSWRestart({
+      activeTabId: 1,
+      currentHost: "github.com",
+      sessionStart: sessionStartTime,
+      isWindowFocused: true,
+    });
+
+    // 4. Flush alarm fires, waking the SW
+    await handleFlushAlarm();
+
+    // 5. The 90 seconds of reading on github.com should be flushed
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "usage_2024-06-08": expect.objectContaining({ "github.com": 90 }),
+      })
+    );
+  });
+
+  it("tab switch after SW restart flushes time for the previous host", async () => {
+    await startTracking(1, "https://d2l.ai");
+    const sessionStartTime = Date.now();
+
+    vi.advanceTimersByTime(120_000);
+
+    simulateSWRestart({
+      activeTabId: 1,
+      currentHost: "d2l.ai",
+      sessionStart: sessionStartTime,
+      isWindowFocused: true,
+    });
+
+    // User switches to a different tab, waking the SW
+    (chrome.tabs.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      url: "https://youtube.com",
+    });
+    await handleTabActivated(2);
+
+    // d2l.ai should have 120 seconds flushed
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "usage_2024-06-08": expect.objectContaining({ "d2l.ai": 120 }),
+      })
+    );
+    // Now tracking youtube.com
+    expect(_getState().currentHost).toBe("youtube.com");
+  });
+
+  it("multiple SW restarts accumulate time correctly", async () => {
+    // First session: 60 seconds on github.com
+    await startTracking(1, "https://github.com");
+    vi.advanceTimersByTime(60_000);
+    await handleFlushAlarm(); // flushes 60s, resets sessionStart
+
+    const sessionStartAfterFlush = Date.now();
+    vi.advanceTimersByTime(45_000);
+
+    // SW restart — 45 seconds elapsed since last flush
+    simulateSWRestart({
+      activeTabId: 1,
+      currentHost: "github.com",
+      sessionStart: sessionStartAfterFlush,
+      isWindowFocused: true,
+    });
+
+    // mockGet needs to return existing usage for the addSeconds read
+    mockGet.mockImplementation((keys: string | string[]) => {
+      const keyArr = Array.isArray(keys) ? keys : [keys];
+      const result: Record<string, unknown> = {};
+      for (const k of keyArr) {
+        if (k === STORAGE_KEY_TRACKER) {
+          result[k] = {
+            activeTabId: 1,
+            currentHost: "github.com",
+            sessionStart: sessionStartAfterFlush,
+            isWindowFocused: true,
+          };
+        } else if (k === "usage_2024-06-08") {
+          result[k] = { "github.com": 60 }; // from earlier flush
+        }
+      }
+      return Promise.resolve(result);
+    });
+
+    await handleFlushAlarm();
+
+    // Should add 45s to existing 60s = 105s total
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "usage_2024-06-08": expect.objectContaining({ "github.com": 105 }),
+      })
+    );
+  });
+
+  it("SW restart with unfocused window does not credit time", async () => {
+    simulateSWRestart({
+      activeTabId: 1,
+      currentHost: "github.com",
+      sessionStart: null,
+      isWindowFocused: false,
+    });
+
+    mockSet.mockClear();
+    await handleFlushAlarm();
+
+    // No usage data should be written — only tracker state persist
+    const usageCalls = mockSet.mock.calls.filter(
+      (call: unknown[]) => Object.keys(call[0] as Record<string, unknown>)[0]?.startsWith("usage_")
+    );
+    expect(usageCalls).toHaveLength(0);
+  });
+
+  it("handleTabUpdated restores activeTabId from storage to match correct tab", async () => {
+    await startTracking(1, "https://github.com");
+    const sessionStartTime = Date.now();
+    vi.advanceTimersByTime(20_000);
+
+    simulateSWRestart({
+      activeTabId: 1,
+      currentHost: "github.com",
+      sessionStart: sessionStartTime,
+      isWindowFocused: true,
+    });
+
+    // Tab 1 finishes navigating to a new URL
+    await handleTabUpdated(
+      1,
+      { status: "complete" },
+      { url: "https://youtube.com" } as chrome.tabs.Tab
+    );
+
+    // Should flush 20s for github.com
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "usage_2024-06-08": expect.objectContaining({ "github.com": 20 }),
+      })
+    );
+    expect(_getState().currentHost).toBe("youtube.com");
+  });
+
+  it("handleTabRemoved restores activeTabId so it can match the removed tab", async () => {
+    await startTracking(1, "https://github.com");
+    const sessionStartTime = Date.now();
+    vi.advanceTimersByTime(30_000);
+
+    simulateSWRestart({
+      activeTabId: 1,
+      currentHost: "github.com",
+      sessionStart: sessionStartTime,
+      isWindowFocused: true,
+    });
+
+    await handleTabRemoved(1);
+
+    // Should flush 30s for github.com
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "usage_2024-06-08": expect.objectContaining({ "github.com": 30 }),
+      })
+    );
+    expect(_getState().currentHost).toBeNull();
+    expect(_getState().sessionStart).toBeNull();
   });
 });

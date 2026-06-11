@@ -8,13 +8,33 @@
  * Chrome suspends the service worker.
  */
 
-import { addSeconds } from "../shared/storage";
+import { addSeconds, getTrackerState, setTrackerState } from "../shared/storage";
 import { toDateKey } from "../shared/timeUtils";
 
 let activeTabId: number | null = null;
 let sessionStart: number | null = null;
 let currentHost: string | null = null;
 let isWindowFocused = true;
+let stateLoaded = false;
+
+/**
+ * Restores in-memory tracker state from storage after SW restart.
+ * No-op if state has already been loaded in this SW lifetime.
+ */
+async function ensureStateLoaded(): Promise<void> {
+  if (stateLoaded) return;
+  stateLoaded = true;
+  const saved = await getTrackerState();
+  activeTabId = saved.activeTabId;
+  currentHost = saved.currentHost;
+  sessionStart = saved.sessionStart;
+  isWindowFocused = saved.isWindowFocused;
+}
+
+/** Persists the current in-memory state to storage. */
+async function persistState(): Promise<void> {
+  await setTrackerState({ activeTabId, currentHost, sessionStart, isWindowFocused });
+}
 
 /**
  * Extracts the bare hostname from a URL string.
@@ -41,6 +61,7 @@ export function getHost(url: string): string | null {
  * want to continue the same session must reset it themselves.
  */
 export async function flushTime(): Promise<void> {
+  await ensureStateLoaded();
   if (!currentHost || !sessionStart || !isWindowFocused) return;
 
   const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
@@ -61,6 +82,7 @@ export async function startTracking(tabId: number, url: string): Promise<void> {
   activeTabId = tabId;
   currentHost = getHost(url);
   sessionStart = currentHost ? Date.now() : null;
+  await persistState();
 }
 
 /**
@@ -75,6 +97,7 @@ async function resumeTracking(): Promise<void> {
   if (currentHost && isWindowFocused) {
     sessionStart = Date.now();
   }
+  await persistState();
 }
 
 /**
@@ -99,6 +122,7 @@ export async function handleTabUpdated(
   changeInfo: chrome.tabs.TabChangeInfo,
   tab: chrome.tabs.Tab
 ): Promise<void> {
+  await ensureStateLoaded();
   if (tabId !== activeTabId) return;
   if (changeInfo.status === "complete" && tab.url) {
     await startTracking(tabId, tab.url);
@@ -120,6 +144,7 @@ export async function handleFocusChanged(windowId: number): Promise<void> {
     await flushTime();
     isWindowFocused = false;
     sessionStart = null;
+    await persistState();
   } else {
     isWindowFocused = true;
     try {
@@ -146,6 +171,7 @@ export async function handleIdle(state: chrome.idle.IdleState): Promise<void> {
   if (state === "idle" || state === "locked") {
     await flushTime();
     sessionStart = null;
+    await persistState();
   } else if (state === "active") {
     await resumeTracking();
   }
@@ -158,11 +184,13 @@ export async function handleIdle(state: chrome.idle.IdleState): Promise<void> {
  * @param tabId - The ID of the closed tab.
  */
 export async function handleTabRemoved(tabId: number): Promise<void> {
+  await ensureStateLoaded();
   if (tabId !== activeTabId) return;
   await flushTime();
   activeTabId = null;
   currentHost = null;
   sessionStart = null;
+  await persistState();
 }
 
 /**
@@ -187,4 +215,5 @@ export function _resetState() {
   sessionStart = null;
   currentHost = null;
   isWindowFocused = true;
+  stateLoaded = false;
 }

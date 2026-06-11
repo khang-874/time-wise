@@ -45,6 +45,17 @@ export interface PomodoroSettings {
 }
 
 /**
+ * Persisted time-tracker state so the service worker can resume
+ * tracking after Chrome suspends and restarts it.
+ */
+export interface TrackerState {
+  activeTabId: number | null;
+  currentHost: string | null;
+  sessionStart: number | null;
+  isWindowFocused: boolean;
+}
+
+/**
  * Typed messages sent from the popup to the background service worker.
  * All variants are handled by `src/background/messageHandler.ts`.
  */

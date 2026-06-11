@@ -6,12 +6,13 @@
  * and a future migration to IndexedDB is a single-file change.
  */
 
-import type { DailyUsage, PomodoroSettings, PomodoroState } from "./types";
+import type { DailyUsage, PomodoroSettings, PomodoroState, TrackerState } from "./types";
 import {
   DEFAULT_POMODORO_STATE,
   DEFAULT_SETTINGS,
   STORAGE_KEY_POMODORO,
   STORAGE_KEY_SETTINGS,
+  STORAGE_KEY_TRACKER,
   STORAGE_KEY_USAGE_PREFIX,
 } from "./constants";
 import { getLast7Days } from "./timeUtils";
@@ -114,4 +115,20 @@ export async function getSettings(): Promise<PomodoroSettings> {
 /** Persists the full settings object. */
 export async function setSettings(settings: PomodoroSettings): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEY_SETTINGS]: settings });
+}
+
+const DEFAULT_TRACKER_STATE: TrackerState = {
+  activeTabId: null,
+  currentHost: null,
+  sessionStart: null,
+  isWindowFocused: true,
+};
+
+export async function getTrackerState(): Promise<TrackerState> {
+  const result = await chrome.storage.local.get(STORAGE_KEY_TRACKER);
+  return (result[STORAGE_KEY_TRACKER] as TrackerState) ?? DEFAULT_TRACKER_STATE;
+}
+
+export async function setTrackerState(state: TrackerState): Promise<void> {
+  await chrome.storage.local.set({ [STORAGE_KEY_TRACKER]: state });
 }
