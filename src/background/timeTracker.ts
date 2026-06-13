@@ -8,20 +8,25 @@
  * Chrome suspends the service worker.
  */
 
-import { addSeconds, getTrackerState, setTrackerState } from "../shared/storage";
+import {
+  addSeconds,
+  getTrackerState,
+  setTrackerState,
+} from "../shared/storage";
 import { toDateKey } from "../shared/timeUtils";
 
 let activeTabId: number | null = null;
 let sessionStart: number | null = null;
 let currentHost: string | null = null;
 let isWindowFocused = true;
+let isIdle = false;
 let stateLoaded = false;
 
 /**
  * Restores in-memory tracker state from storage after SW restart.
  * No-op if state has already been loaded in this SW lifetime.
  */
-async function ensureStateLoaded(): Promise<void> {
+async function loadState(): Promise<void> {
   if (stateLoaded) return;
   stateLoaded = true;
   const saved = await getTrackerState();
@@ -29,11 +34,18 @@ async function ensureStateLoaded(): Promise<void> {
   currentHost = saved.currentHost;
   sessionStart = saved.sessionStart;
   isWindowFocused = saved.isWindowFocused;
+  isIdle = saved.isIdle;
 }
 
 /** Persists the current in-memory state to storage. */
 async function persistState(): Promise<void> {
-  await setTrackerState({ activeTabId, currentHost, sessionStart, isWindowFocused });
+  await setTrackerState({
+    activeTabId,
+    currentHost,
+    sessionStart,
+    isWindowFocused,
+    isIdle,
+  });
 }
 
 /**
@@ -61,7 +73,7 @@ export function getHost(url: string): string | null {
  * want to continue the same session must reset it themselves.
  */
 export async function flushTime(): Promise<void> {
-  await ensureStateLoaded();
+  await loadState();
   if (!currentHost || !sessionStart || !isWindowFocused) return;
 
   const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
@@ -94,7 +106,7 @@ export async function startTracking(tabId: number, url: string): Promise<void> {
  */
 async function resumeTracking(): Promise<void> {
   await flushTime();
-  if (currentHost && isWindowFocused) {
+  if (currentHost && isWindowFocused && !isIdle) {
     sessionStart = Date.now();
   }
   await persistState();
@@ -120,9 +132,9 @@ export async function handleTabActivated(tabId: number): Promise<void> {
 export async function handleTabUpdated(
   tabId: number,
   changeInfo: chrome.tabs.TabChangeInfo,
-  tab: chrome.tabs.Tab
+  tab: chrome.tabs.Tab,
 ): Promise<void> {
-  await ensureStateLoaded();
+  await loadState();
   if (tabId !== activeTabId) return;
   if (changeInfo.status === "complete" && tab.url) {
     await startTracking(tabId, tab.url);
@@ -171,8 +183,10 @@ export async function handleIdle(state: chrome.idle.IdleState): Promise<void> {
   if (state === "idle" || state === "locked") {
     await flushTime();
     sessionStart = null;
+    isIdle = true;
     await persistState();
   } else if (state === "active") {
+    isIdle = false;
     await resumeTracking();
   }
 }
@@ -184,7 +198,7 @@ export async function handleIdle(state: chrome.idle.IdleState): Promise<void> {
  * @param tabId - The ID of the closed tab.
  */
 export async function handleTabRemoved(tabId: number): Promise<void> {
-  await ensureStateLoaded();
+  await loadState();
   if (tabId !== activeTabId) return;
   await flushTime();
   activeTabId = null;
@@ -198,7 +212,8 @@ export async function handleTabRemoved(tabId: number): Promise<void> {
  *
  * @remarks
  * Flushes elapsed time then resets `sessionStart` to prevent double-counting
- * the same seconds on the next flush.
+ * the same seconds on the next flush. Does NOT restart a session that was
+ * paused by idle or window blur — only continues an already-active session.
  */
 export async function handleFlushAlarm(): Promise<void> {
   await resumeTracking();
@@ -206,7 +221,7 @@ export async function handleFlushAlarm(): Promise<void> {
 
 /** @internal Returns a snapshot of module state for use in tests. */
 export function _getState() {
-  return { activeTabId, sessionStart, currentHost, isWindowFocused };
+  return { activeTabId, sessionStart, currentHost, isWindowFocused, isIdle };
 }
 
 /** @internal Resets all module state to initial values for test isolation. */
@@ -215,5 +230,6 @@ export function _resetState() {
   sessionStart = null;
   currentHost = null;
   isWindowFocused = true;
+  isIdle = false;
   stateLoaded = false;
 }
