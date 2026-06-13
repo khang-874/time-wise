@@ -75,7 +75,7 @@ export function getHost(url: string): string | null {
  * @remarks
  * No-op when the window is unfocused or there is no active host.
  */
-export async function flushTime(resetTimer = false): Promise<void> {
+export async function flushTime(resetTimer: boolean): Promise<void> {
   await loadState();
   if (!currentHost || !isWindowFocused) return;
 
@@ -96,7 +96,7 @@ export async function flushTime(resetTimer = false): Promise<void> {
  * @param url - Full URL of the page; non-trackable URLs (chrome://, invalid) result in a null host.
  */
 export async function startTracking(tabId: number, url: string): Promise<void> {
-  await flushTime();
+  await flushTime(false);
   activeTabId = tabId;
   currentHost = getHost(url);
   sessionStart = currentHost ? Date.now() : null;
@@ -144,7 +144,7 @@ export async function handleTabUpdated(
  */
 export async function handleFocusChanged(windowId: number): Promise<void> {
   if (windowId === chrome.windows.WINDOW_ID_NONE) {
-    await flushTime();
+    await flushTime(false);
     isWindowFocused = false;
     sessionStart = null;
     await persistState();
@@ -173,7 +173,7 @@ export async function handleFocusChanged(windowId: number): Promise<void> {
  */
 export async function handleIdle(state: chrome.idle.IdleState): Promise<void> {
   if (state === "locked") {
-    await flushTime();
+    await flushTime(false);
     sessionStart = null;
     isLocked = true;
     await persistState();
@@ -192,7 +192,7 @@ export async function handleIdle(state: chrome.idle.IdleState): Promise<void> {
 export async function handleTabRemoved(tabId: number): Promise<void> {
   await loadState();
   if (tabId !== activeTabId) return;
-  await flushTime();
+  await flushTime(false);
   activeTabId = null;
   currentHost = null;
   sessionStart = null;
