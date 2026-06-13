@@ -71,7 +71,9 @@ export function getLast7Days(): string[] {
  */
 export function toDisplayLabel(dateKey: string): string {
   const today = toDateKey(new Date());
-  const yesterday = toDateKey(new Date(Date.now() - 86400000));
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const yesterday = toDateKey(d);
   if (dateKey === today) return "Today";
   if (dateKey === yesterday) return "Yesterday";
   const [, month, day] = dateKey.split("-");

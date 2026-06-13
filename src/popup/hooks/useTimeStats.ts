@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { DailyUsage } from "../../shared/types";
 import { sendMessage } from "../../shared/messages";
 import { toDateKey } from "../../shared/timeUtils";
@@ -27,32 +27,41 @@ interface UseTimeStatsResult {
  * For historical days the flush is skipped to avoid unnecessary SW wake-ups.
  */
 export function useTimeStats(): UseTimeStatsResult {
-  const todayKey = toDateKey(new Date());
-  const [dateKey, setDateKey] = useState(todayKey);
+  const todayDate = toDateKey(new Date());
+  const [date, setDate] = useState(todayDate);
   const [usage, setUsage] = useState<DailyUsage>({});
   const [loading, setLoading] = useState(true);
+  const activeRequestRef = useRef<string | null>(null);
 
-  const fetchUsage = useCallback(async (key: string) => {
-    setLoading(true);
-    try {
-      if (key === todayKey) {
-        await sendMessage({ type: "FLUSH_TIME" });
+  const fetchUsage = useCallback(
+    async (dateToFetch: string) => {
+      activeRequestRef.current = dateToFetch;
+      setLoading(true);
+      try {
+        if (dateToFetch === todayDate) {
+          await sendMessage({ type: "FLUSH_TIME" });
+        }
+        const response = await sendMessage({
+          type: "GET_USAGE",
+          payload: { dateKey: dateToFetch },
+        });
+        if (activeRequestRef.current !== dateToFetch) return;
+        if (response.type === "USAGE") {
+          setUsage(response.payload);
+        }
+      } finally {
+        if (activeRequestRef.current === dateToFetch) setLoading(false);
       }
-      const response = await sendMessage({ type: "GET_USAGE", payload: { dateKey: key } });
-      if (response.type === "USAGE") {
-        setUsage(response.payload);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [todayKey]);
+    },
+    [todayDate],
+  );
 
   useEffect(() => {
-    fetchUsage(dateKey);
-  }, [dateKey, fetchUsage]);
+    fetchUsage(date);
+  }, [date, fetchUsage]);
 
   const goToPrevDay = () => {
-    setDateKey((prev) => {
+    setDate((prev) => {
       const d = new Date(prev + "T00:00:00");
       d.setDate(d.getDate() - 1);
       return toDateKey(d);
@@ -60,21 +69,21 @@ export function useTimeStats(): UseTimeStatsResult {
   };
 
   const goToNextDay = () => {
-    setDateKey((prev) => {
+    setDate((prev) => {
       const d = new Date(prev + "T00:00:00");
       d.setDate(d.getDate() + 1);
       const next = toDateKey(d);
-      return next <= todayKey ? next : prev;
+      return next <= todayDate ? next : prev;
     });
   };
 
   return {
     usage,
     loading,
-    dateKey,
+    dateKey: date,
     goToPrevDay,
     goToNextDay,
-    isToday: dateKey === todayKey,
-    refresh: () => fetchUsage(dateKey),
+    isToday: date === todayDate,
+    refresh: () => fetchUsage(date),
   };
 }
