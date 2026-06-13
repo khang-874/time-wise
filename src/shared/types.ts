@@ -55,6 +55,13 @@ export interface TrackerState {
   isWindowFocused: boolean;
   /** True while the screen is locked. Tracking is paused until the screen is unlocked. */
   isLocked: boolean;
+  /**
+   * Epoch ms of the last successful state persist. Compared against `Date.now()` in
+   * `loadState` to detect browser restarts: a gap longer than the flush-alarm interval
+   * means the SW was dead (browser closed / machine slept) and `sessionStart` should
+   * not be trusted.
+   */
+  lastPersistedAt: number | null;
 }
 
 /**

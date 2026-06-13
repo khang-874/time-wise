@@ -324,6 +324,7 @@ describe("service worker suspension recovery", () => {
       sessionStart: sessionStartTime,
       isWindowFocused: true,
       isLocked: false,
+      lastPersistedAt: Date.now(),
     });
 
     // 4. Flush alarm fires, waking the SW
@@ -349,6 +350,7 @@ describe("service worker suspension recovery", () => {
       sessionStart: sessionStartTime,
       isWindowFocused: true,
       isLocked: false,
+      lastPersistedAt: Date.now(),
     });
 
     // User switches to a different tab, waking the SW
@@ -377,12 +379,14 @@ describe("service worker suspension recovery", () => {
     vi.advanceTimersByTime(45_000);
 
     // SW restart — 45 seconds elapsed since last flush
+    const restartTime = Date.now();
     simulateSWRestart({
       activeTabId: 1,
       currentHost: "github.com",
       sessionStart: sessionStartAfterFlush,
       isWindowFocused: true,
       isLocked: false,
+      lastPersistedAt: restartTime,
     });
 
     // mockGet needs to return existing usage for the addSeconds read
@@ -397,6 +401,7 @@ describe("service worker suspension recovery", () => {
             sessionStart: sessionStartAfterFlush,
             isWindowFocused: true,
             isLocked: false,
+            lastPersistedAt: restartTime,
           };
         } else if (k === "usage_2024-06-08") {
           result[k] = { "github.com": 60 }; // from earlier flush
@@ -422,6 +427,7 @@ describe("service worker suspension recovery", () => {
       sessionStart: null,
       isWindowFocused: false,
       isLocked: false,
+      lastPersistedAt: Date.now(),
     });
 
     mockSet.mockClear();
@@ -445,6 +451,7 @@ describe("service worker suspension recovery", () => {
       sessionStart: sessionStartTime,
       isWindowFocused: true,
       isLocked: false,
+      lastPersistedAt: Date.now(),
     });
 
     // Tab 1 finishes navigating to a new URL
@@ -472,6 +479,7 @@ describe("service worker suspension recovery", () => {
       sessionStart: sessionStartTime,
       isWindowFocused: true,
       isLocked: false,
+      lastPersistedAt: Date.now(),
     });
 
     await handleTabRemoved(1);
@@ -483,6 +491,39 @@ describe("service worker suspension recovery", () => {
       }),
     );
     expect(_getState().currentHost).toBeNull();
+    expect(_getState().sessionStart).toBeNull();
+  });
+
+  it("browser close: stale session context is fully discarded so the gap is not counted and the wrong host is not tracked", async () => {
+    // Simulate: user was on monkeytype.com, browser closed without firing onRemoved.
+    // The flush alarm last ran 8 hours ago (lastPersistedAt is stale).
+    const eightHoursAgo = Date.now() - 8 * 60 * 60 * 1000;
+    const sessionStartBeforeClose = eightHoursAgo - 30_000;
+
+    simulateSWRestart({
+      activeTabId: 1,
+      currentHost: "monkeytype.com",
+      sessionStart: sessionStartBeforeClose,
+      isWindowFocused: true,
+      isLocked: false,
+      lastPersistedAt: eightHoursAgo,
+    });
+
+    mockSet.mockClear();
+
+    // First event after browser reopens: the flush alarm fires before any tab event.
+    // Without the fix, this would start tracking monkeytype.com again via flushTime(true).
+    await handleFlushAlarm();
+
+    // No usage should be written — the stale session was discarded on load
+    const usageCalls = mockSet.mock.calls.filter((call: unknown[]) =>
+      Object.keys(call[0] as Record<string, unknown>)[0]?.startsWith("usage_"),
+    );
+    expect(usageCalls).toHaveLength(0);
+
+    // currentHost and activeTabId must also be cleared — not just sessionStart
+    expect(_getState().currentHost).toBeNull();
+    expect(_getState().activeTabId).toBeNull();
     expect(_getState().sessionStart).toBeNull();
   });
 });

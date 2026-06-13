@@ -82,7 +82,9 @@ Coverage is configured in `vitest.config.ts`. The following are excluded:
 
 **Single storage boundary** — only `src/shared/storage.ts` touches `chrome.storage.local`. Migrating to IndexedDB in the future is a one-file change.
 
-**Persisted tracker state** — `timeTracker.ts` persists `TrackerState` (active tab, host, session start, focus flag, lock flag) to storage on every state mutation and restores it lazily via `loadState()` on the first call after SW restart. This prevents time loss when Chrome suspends the SW while the user stays on a page.
+**Persisted tracker state** — `timeTracker.ts` persists `TrackerState` (active tab, host, session start, focus flag, lock flag, `lastPersistedAt`) to storage on every state mutation and restores it lazily via `loadState()` on the first call after SW restart. This prevents time loss when Chrome suspends the SW while the user stays on a page.
+
+**`lastPersistedAt` guards against stale sessions** — every `persistState()` call stamps the current epoch ms into `lastPersistedAt`. On SW wake, `loadState()` compares `Date.now()` against this value; if the gap exceeds 2 minutes (the flush-alarm period), the SW was dead (browser closed, machine slept) and `sessionStart`, `currentHost`, and `activeTabId` are all cleared. Clearing just `sessionStart` is not enough: a stale `currentHost` would cause the flush alarm's `resetTimer` path to start a new session for the wrong host, and a stale `activeTabId` could match a different tab if Chrome reuses the ID.
 
 **Idle vs locked** — the `"idle"` Chrome idle state (no mouse/keyboard activity) is intentionally ignored so passive consumption like watching a video is still tracked. Only `"locked"` (screen lock) pauses tracking, since a locked screen is an unambiguous signal the user is away.
 

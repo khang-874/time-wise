@@ -124,6 +124,7 @@ const DEFAULT_TRACKER_STATE: TrackerState = {
   sessionStart: null,
   isWindowFocused: true,
   isLocked: false,
+  lastPersistedAt: null,
 };
 
 export async function getTrackerState(): Promise<TrackerState> {

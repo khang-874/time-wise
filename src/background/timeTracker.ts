@@ -22,6 +22,9 @@ let isWindowFocused = true;
 let isLocked = false;
 let stateLoaded = false;
 
+// Flush alarm fires every minute; a gap longer than this means the SW was dead.
+const STALE_SESSION_MS = 2 * 60 * 1000;
+
 /**
  * Restores in-memory tracker state from storage after SW restart.
  * No-op if state has already been loaded in this SW lifetime.
@@ -35,6 +38,17 @@ async function loadState(): Promise<void> {
   sessionStart = saved.sessionStart;
   isWindowFocused = saved.isWindowFocused;
   isLocked = saved.isLocked;
+
+  // If the SW was dead longer than the flush-alarm interval (browser closed,
+  // machine slept), the entire session context is stale — discard it so the
+  // flush alarm can't start tracking the wrong host and Chrome's tab ID reuse
+  // can't match a different tab.
+  const gap = saved.lastPersistedAt ? Date.now() - saved.lastPersistedAt : Infinity;
+  if (gap > STALE_SESSION_MS) {
+    activeTabId = null;
+    currentHost = null;
+    sessionStart = null;
+  }
 }
 
 /** Persists the current in-memory state to storage. */
@@ -45,6 +59,7 @@ async function persistState(): Promise<void> {
     sessionStart,
     isWindowFocused,
     isLocked,
+    lastPersistedAt: Date.now(),
   });
 }
 
