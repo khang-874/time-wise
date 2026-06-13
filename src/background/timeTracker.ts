@@ -96,7 +96,10 @@ export async function flushTime(resetTimer: boolean): Promise<void> {
  * @param url - Full URL of the page, or `null` to stop tracking. Non-trackable URLs
  *   (chrome://, invalid) result in a null host and no active session.
  */
-export async function trackTime(tabId: number | null, url: string | null): Promise<void> {
+export async function trackTime(
+  tabId: number | null,
+  url: string | null,
+): Promise<void> {
   await flushTime(false);
   activeTabId = tabId;
   currentHost = url ? getHost(url) : null;

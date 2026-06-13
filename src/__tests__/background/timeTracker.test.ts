@@ -50,7 +50,7 @@ describe("getHost", () => {
 
 describe("flushTime", () => {
   it("does nothing when currentHost is null", async () => {
-    await flushTime();
+    await flushTime(false);
     expect(mockSet).not.toHaveBeenCalled();
   });
 
@@ -58,18 +58,18 @@ describe("flushTime", () => {
     await trackTime(1, "https://github.com");
     await handleFocusChanged(chrome.windows.WINDOW_ID_NONE);
     mockSet.mockClear();
-    await flushTime();
+    await flushTime(false);
     expect(mockSet).not.toHaveBeenCalled();
   });
 
   it("writes accumulated seconds for active session", async () => {
     await trackTime(1, "https://github.com");
     vi.advanceTimersByTime(30000); // 30 seconds
-    await flushTime();
+    await flushTime(false);
     expect(mockSet).toHaveBeenCalledWith(
       expect.objectContaining({
         "usage_2024-06-08": expect.objectContaining({ "github.com": 30 }),
-      })
+      }),
     );
   });
 
@@ -77,7 +77,7 @@ describe("flushTime", () => {
     await trackTime(1, "https://github.com");
     // No time passes
     mockSet.mockClear();
-    await flushTime();
+    await flushTime(false);
     expect(mockSet).not.toHaveBeenCalled();
   });
 });
@@ -96,7 +96,7 @@ describe("startTracking", () => {
     expect(mockSet).toHaveBeenCalledWith(
       expect.objectContaining({
         "usage_2024-06-08": expect.objectContaining({ "github.com": 10 }),
-      })
+      }),
     );
   });
 
@@ -134,7 +134,7 @@ describe("handleIdle", () => {
     expect(mockSet).toHaveBeenCalledWith(
       expect.objectContaining({
         "usage_2024-06-08": expect.objectContaining({ "github.com": 5 }),
-      })
+      }),
     );
     expect(_getState().sessionStart).toBeNull();
     expect(_getState().isLocked).toBe(true);
@@ -173,7 +173,7 @@ describe("handleFlushAlarm", () => {
     expect(mockSet).toHaveBeenCalledWith(
       expect.objectContaining({
         "usage_2024-06-08": expect.objectContaining({ "github.com": 60 }),
-      })
+      }),
     );
     const state = _getState();
     expect(state.sessionStart).not.toBeNull();
@@ -190,7 +190,9 @@ describe("handleTabActivated", () => {
   });
 
   it("handles tab with no URL", async () => {
-    (chrome.tabs.get as ReturnType<typeof vi.fn>).mockResolvedValue({ url: undefined });
+    (chrome.tabs.get as ReturnType<typeof vi.fn>).mockResolvedValue({
+      url: undefined,
+    });
     await handleTabActivated(42);
     expect(_getState().currentHost).toBeNull();
   });
@@ -199,19 +201,25 @@ describe("handleTabActivated", () => {
 describe("handleTabUpdated", () => {
   it("ignores updates for inactive tab", async () => {
     await trackTime(1, "https://github.com");
-    await handleTabUpdated(99, { status: "complete" }, { url: "https://other.com" } as chrome.tabs.Tab);
+    await handleTabUpdated(99, { status: "complete" }, {
+      url: "https://other.com",
+    } as chrome.tabs.Tab);
     expect(_getState().currentHost).toBe("github.com");
   });
 
   it("updates tracking when active tab completes navigation", async () => {
     await trackTime(1, "https://github.com");
-    await handleTabUpdated(1, { status: "complete" }, { url: "https://youtube.com" } as chrome.tabs.Tab);
+    await handleTabUpdated(1, { status: "complete" }, {
+      url: "https://youtube.com",
+    } as chrome.tabs.Tab);
     expect(_getState().currentHost).toBe("youtube.com");
   });
 
   it("ignores non-complete status changes", async () => {
     await trackTime(1, "https://github.com");
-    await handleTabUpdated(1, { status: "loading" }, { url: "https://youtube.com" } as chrome.tabs.Tab);
+    await handleTabUpdated(1, { status: "loading" }, {
+      url: "https://youtube.com",
+    } as chrome.tabs.Tab);
     expect(_getState().currentHost).toBe("github.com");
   });
 });
@@ -252,7 +260,7 @@ describe("handleFocusChanged", () => {
     expect(mockSet).toHaveBeenCalledWith(
       expect.objectContaining({
         "usage_2024-06-08": expect.objectContaining({ "github.com": 10 }),
-      })
+      }),
     );
     expect(_getState().currentHost).toBe("youtube.com");
   });
@@ -267,7 +275,7 @@ describe("handleTabRemoved", () => {
     expect(mockSet).toHaveBeenCalledWith(
       expect.objectContaining({
         "usage_2024-06-08": expect.objectContaining({ "github.com": 10 }),
-      })
+      }),
     );
     const state = _getState();
     expect(state.currentHost).toBeNull();
@@ -325,7 +333,7 @@ describe("service worker suspension recovery", () => {
     expect(mockSet).toHaveBeenCalledWith(
       expect.objectContaining({
         "usage_2024-06-08": expect.objectContaining({ "github.com": 90 }),
-      })
+      }),
     );
   });
 
@@ -353,7 +361,7 @@ describe("service worker suspension recovery", () => {
     expect(mockSet).toHaveBeenCalledWith(
       expect.objectContaining({
         "usage_2024-06-08": expect.objectContaining({ "d2l.ai": 120 }),
-      })
+      }),
     );
     // Now tracking youtube.com
     expect(_getState().currentHost).toBe("youtube.com");
@@ -403,7 +411,7 @@ describe("service worker suspension recovery", () => {
     expect(mockSet).toHaveBeenCalledWith(
       expect.objectContaining({
         "usage_2024-06-08": expect.objectContaining({ "github.com": 105 }),
-      })
+      }),
     );
   });
 
@@ -420,8 +428,8 @@ describe("service worker suspension recovery", () => {
     await handleFlushAlarm();
 
     // No usage data should be written — only tracker state persist
-    const usageCalls = mockSet.mock.calls.filter(
-      (call: unknown[]) => Object.keys(call[0] as Record<string, unknown>)[0]?.startsWith("usage_")
+    const usageCalls = mockSet.mock.calls.filter((call: unknown[]) =>
+      Object.keys(call[0] as Record<string, unknown>)[0]?.startsWith("usage_"),
     );
     expect(usageCalls).toHaveLength(0);
   });
@@ -440,17 +448,15 @@ describe("service worker suspension recovery", () => {
     });
 
     // Tab 1 finishes navigating to a new URL
-    await handleTabUpdated(
-      1,
-      { status: "complete" },
-      { url: "https://youtube.com" } as chrome.tabs.Tab
-    );
+    await handleTabUpdated(1, { status: "complete" }, {
+      url: "https://youtube.com",
+    } as chrome.tabs.Tab);
 
     // Should flush 20s for github.com
     expect(mockSet).toHaveBeenCalledWith(
       expect.objectContaining({
         "usage_2024-06-08": expect.objectContaining({ "github.com": 20 }),
-      })
+      }),
     );
     expect(_getState().currentHost).toBe("youtube.com");
   });
@@ -474,7 +480,7 @@ describe("service worker suspension recovery", () => {
     expect(mockSet).toHaveBeenCalledWith(
       expect.objectContaining({
         "usage_2024-06-08": expect.objectContaining({ "github.com": 30 }),
-      })
+      }),
     );
     expect(_getState().currentHost).toBeNull();
     expect(_getState().sessionStart).toBeNull();
