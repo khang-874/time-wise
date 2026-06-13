@@ -90,27 +90,28 @@ export async function flushTime(resetTimer: boolean): Promise<void> {
 }
 
 /**
- * Flushes the previous session and begins tracking a new tab/URL.
+ * Flushes the previous session and switches the tracking target.
  *
- * @param tabId - The Chrome tab ID to track.
- * @param url - Full URL of the page; non-trackable URLs (chrome://, invalid) result in a null host.
+ * @param tabId - The tab to track, or `null` to stop tracking entirely.
+ * @param url - Full URL of the page, or `null` to stop tracking. Non-trackable URLs
+ *   (chrome://, invalid) result in a null host and no active session.
  */
-export async function startTracking(tabId: number, url: string): Promise<void> {
+export async function trackTime(tabId: number | null, url: string | null): Promise<void> {
   await flushTime(false);
   activeTabId = tabId;
-  currentHost = getHost(url);
+  currentHost = url ? getHost(url) : null;
   sessionStart = currentHost ? Date.now() : null;
   await persistState();
 }
 
 /**
- * Handles `chrome.tabs.onActivated` — resolves the tab URL then delegates to {@link startTracking}.
+ * Handles `chrome.tabs.onActivated` — resolves the tab URL then delegates to {@link trackTime}.
  *
  * @param tabId - ID of the newly active tab.
  */
 export async function handleTabActivated(tabId: number): Promise<void> {
   const tab = await chrome.tabs.get(tabId);
-  await startTracking(tabId, tab.url ?? "");
+  await trackTime(tabId, tab.url ?? "");
 }
 
 /**
@@ -128,7 +129,7 @@ export async function handleTabUpdated(
   await loadState();
   if (tabId !== activeTabId) return;
   if (changeInfo.status === "complete" && tab.url) {
-    await startTracking(tabId, tab.url);
+    await trackTime(tabId, tab.url);
   }
 }
 
@@ -153,7 +154,7 @@ export async function handleFocusChanged(windowId: number): Promise<void> {
     try {
       const [tab] = await chrome.tabs.query({ active: true, windowId });
       if (tab && tab.id != null && tab.url) {
-        await startTracking(tab.id, tab.url);
+        await trackTime(tab.id, tab.url);
       }
     } catch {
       // window may have closed between the event firing and the query
@@ -192,11 +193,7 @@ export async function handleIdle(state: chrome.idle.IdleState): Promise<void> {
 export async function handleTabRemoved(tabId: number): Promise<void> {
   await loadState();
   if (tabId !== activeTabId) return;
-  await flushTime(false);
-  activeTabId = null;
-  currentHost = null;
-  sessionStart = null;
-  await persistState();
+  await trackTime(null, null);
 }
 
 /**
@@ -219,8 +216,8 @@ export function _getState() {
 /** @internal Resets all module state to initial values for test isolation. */
 export function _resetState() {
   activeTabId = null;
-  sessionStart = null;
   currentHost = null;
+  sessionStart = null;
   isWindowFocused = true;
   isLocked = false;
   stateLoaded = false;

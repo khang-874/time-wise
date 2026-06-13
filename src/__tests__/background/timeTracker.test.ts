@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   getHost,
   flushTime,
-  startTracking,
+  trackTime,
   handleTabActivated,
   handleTabUpdated,
   handleFocusChanged,
@@ -55,7 +55,7 @@ describe("flushTime", () => {
   });
 
   it("does nothing when window is not focused", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     await handleFocusChanged(chrome.windows.WINDOW_ID_NONE);
     mockSet.mockClear();
     await flushTime();
@@ -63,7 +63,7 @@ describe("flushTime", () => {
   });
 
   it("writes accumulated seconds for active session", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     vi.advanceTimersByTime(30000); // 30 seconds
     await flushTime();
     expect(mockSet).toHaveBeenCalledWith(
@@ -74,7 +74,7 @@ describe("flushTime", () => {
   });
 
   it("does nothing when elapsed is 0", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     // No time passes
     mockSet.mockClear();
     await flushTime();
@@ -87,10 +87,10 @@ describe("startTracking", () => {
     const mockTab = { url: "https://github.com" };
     (chrome.tabs.get as ReturnType<typeof vi.fn>).mockResolvedValue(mockTab);
 
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     vi.advanceTimersByTime(10000);
 
-    await startTracking(2, "https://youtube.com");
+    await trackTime(2, "https://youtube.com");
 
     // Should have flushed github.com seconds
     expect(mockSet).toHaveBeenCalledWith(
@@ -101,14 +101,14 @@ describe("startTracking", () => {
   });
 
   it("sets null host for chrome:// URLs", async () => {
-    await startTracking(1, "chrome://extensions");
+    await trackTime(1, "chrome://extensions");
     const state = _getState();
     expect(state.currentHost).toBeNull();
     expect(state.sessionStart).toBeNull();
   });
 
   it("sets host and sessionStart for valid URL", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     const state = _getState();
     expect(state.currentHost).toBe("github.com");
     expect(state.sessionStart).not.toBeNull();
@@ -117,7 +117,7 @@ describe("startTracking", () => {
 
 describe("handleIdle", () => {
   it("does not stop tracking on idle — passive consumption should be counted", async () => {
-    await startTracking(1, "https://youtube.com");
+    await trackTime(1, "https://youtube.com");
     const before = _getState().sessionStart;
 
     await handleIdle("idle");
@@ -127,7 +127,7 @@ describe("handleIdle", () => {
   });
 
   it("flushes and stops session on locked", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     vi.advanceTimersByTime(5000);
     await handleIdle("locked");
 
@@ -141,7 +141,7 @@ describe("handleIdle", () => {
   });
 
   it("resumes session on active after locked", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     await handleIdle("locked");
     expect(_getState().sessionStart).toBeNull();
 
@@ -151,7 +151,7 @@ describe("handleIdle", () => {
   });
 
   it("does not resume session on active when window is unfocused", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     vi.advanceTimersByTime(10000);
 
     await handleFocusChanged(chrome.windows.WINDOW_ID_NONE);
@@ -166,7 +166,7 @@ describe("handleIdle", () => {
 
 describe("handleFlushAlarm", () => {
   it("flushes and resets sessionStart", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     vi.advanceTimersByTime(60000);
     await handleFlushAlarm();
 
@@ -198,19 +198,19 @@ describe("handleTabActivated", () => {
 
 describe("handleTabUpdated", () => {
   it("ignores updates for inactive tab", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     await handleTabUpdated(99, { status: "complete" }, { url: "https://other.com" } as chrome.tabs.Tab);
     expect(_getState().currentHost).toBe("github.com");
   });
 
   it("updates tracking when active tab completes navigation", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     await handleTabUpdated(1, { status: "complete" }, { url: "https://youtube.com" } as chrome.tabs.Tab);
     expect(_getState().currentHost).toBe("youtube.com");
   });
 
   it("ignores non-complete status changes", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     await handleTabUpdated(1, { status: "loading" }, { url: "https://youtube.com" } as chrome.tabs.Tab);
     expect(_getState().currentHost).toBe("github.com");
   });
@@ -218,7 +218,7 @@ describe("handleTabUpdated", () => {
 
 describe("handleFocusChanged", () => {
   it("marks window as unfocused when WINDOW_ID_NONE", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     vi.advanceTimersByTime(5000);
     await handleFocusChanged(chrome.windows.WINDOW_ID_NONE);
     expect(_getState().isWindowFocused).toBe(false);
@@ -236,7 +236,7 @@ describe("handleFocusChanged", () => {
 
   it("flushes previous session when window regains focus on a different tab", async () => {
     // Start tracking on tab 1
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     vi.advanceTimersByTime(10000);
 
     // Window is still focused but we'll simulate switching tabs while refocusing
@@ -260,7 +260,7 @@ describe("handleFocusChanged", () => {
 
 describe("handleTabRemoved", () => {
   it("flushes and clears state when active tab is removed", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     vi.advanceTimersByTime(10000);
     await handleTabRemoved(1);
 
@@ -275,7 +275,7 @@ describe("handleTabRemoved", () => {
   });
 
   it("ignores removal of inactive tab", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     mockSet.mockClear();
     await handleTabRemoved(99);
     expect(mockSet).not.toHaveBeenCalled();
@@ -302,7 +302,7 @@ describe("service worker suspension recovery", () => {
 
   it("flush alarm recovers state and saves elapsed time after SW restart", async () => {
     // 1. Start tracking github.com
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     const sessionStartTime = Date.now();
 
     // 2. Advance 90 seconds — SW would normally flush at 60s, but let's
@@ -330,7 +330,7 @@ describe("service worker suspension recovery", () => {
   });
 
   it("tab switch after SW restart flushes time for the previous host", async () => {
-    await startTracking(1, "https://d2l.ai");
+    await trackTime(1, "https://d2l.ai");
     const sessionStartTime = Date.now();
 
     vi.advanceTimersByTime(120_000);
@@ -361,7 +361,7 @@ describe("service worker suspension recovery", () => {
 
   it("multiple SW restarts accumulate time correctly", async () => {
     // First session: 60 seconds on github.com
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     vi.advanceTimersByTime(60_000);
     await handleFlushAlarm(); // flushes 60s, resets sessionStart
 
@@ -427,7 +427,7 @@ describe("service worker suspension recovery", () => {
   });
 
   it("handleTabUpdated restores activeTabId from storage to match correct tab", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     const sessionStartTime = Date.now();
     vi.advanceTimersByTime(20_000);
 
@@ -456,7 +456,7 @@ describe("service worker suspension recovery", () => {
   });
 
   it("handleTabRemoved restores activeTabId so it can match the removed tab", async () => {
-    await startTracking(1, "https://github.com");
+    await trackTime(1, "https://github.com");
     const sessionStartTime = Date.now();
     vi.advanceTimersByTime(30_000);
 

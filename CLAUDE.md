@@ -85,3 +85,7 @@ Coverage is configured in `vitest.config.ts`. The following are excluded:
 **Persisted tracker state** — `timeTracker.ts` persists `TrackerState` (active tab, host, session start, focus flag, lock flag) to storage on every state mutation and restores it lazily via `loadState()` on the first call after SW restart. This prevents time loss when Chrome suspends the SW while the user stays on a page.
 
 **Idle vs locked** — the `"idle"` Chrome idle state (no mouse/keyboard activity) is intentionally ignored so passive consumption like watching a video is still tracked. Only `"locked"` (screen lock) pauses tracking, since a locked screen is an unambiguous signal the user is away.
+
+**`trackTime(tabId, url)`** — the single function for switching the tracking target. Accepts nullable params: called with real values to start tracking a tab, called with `(null, null)` to stop tracking entirely (e.g. when the active tab is closed). Internally flushes the previous session before setting the new target, so callers never need to call `flushTime` separately.
+
+**`flushTime(resetTimer)`** — saves elapsed seconds for the current session. When `resetTimer` is `true`, slides `sessionStart` forward to now so the next flush only counts new elapsed time (used by the periodic alarm and on screen unlock). When `false`, leaves `sessionStart` for the caller to update or clear.
