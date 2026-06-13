@@ -323,6 +323,7 @@ describe("service worker suspension recovery", () => {
       currentHost: "github.com",
       sessionStart: sessionStartTime,
       isWindowFocused: true,
+      isIdle: false,
     });
 
     // 4. Flush alarm fires, waking the SW
@@ -347,6 +348,7 @@ describe("service worker suspension recovery", () => {
       currentHost: "d2l.ai",
       sessionStart: sessionStartTime,
       isWindowFocused: true,
+      isIdle: false,
     });
 
     // User switches to a different tab, waking the SW
@@ -380,6 +382,7 @@ describe("service worker suspension recovery", () => {
       currentHost: "github.com",
       sessionStart: sessionStartAfterFlush,
       isWindowFocused: true,
+      isIdle: false,
     });
 
     // mockGet needs to return existing usage for the addSeconds read
@@ -393,6 +396,7 @@ describe("service worker suspension recovery", () => {
             currentHost: "github.com",
             sessionStart: sessionStartAfterFlush,
             isWindowFocused: true,
+            isIdle: false,
           };
         } else if (k === "usage_2024-06-08") {
           result[k] = { "github.com": 60 }; // from earlier flush
@@ -417,6 +421,7 @@ describe("service worker suspension recovery", () => {
       currentHost: "github.com",
       sessionStart: null,
       isWindowFocused: false,
+      isIdle: false,
     });
 
     mockSet.mockClear();
@@ -439,6 +444,7 @@ describe("service worker suspension recovery", () => {
       currentHost: "github.com",
       sessionStart: sessionStartTime,
       isWindowFocused: true,
+      isIdle: false,
     });
 
     // Tab 1 finishes navigating to a new URL
@@ -467,6 +473,7 @@ describe("service worker suspension recovery", () => {
       currentHost: "github.com",
       sessionStart: sessionStartTime,
       isWindowFocused: true,
+      isIdle: false,
     });
 
     await handleTabRemoved(1);
