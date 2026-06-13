@@ -69,6 +69,18 @@ describe("addSeconds", () => {
       "usage_2024-06-08": { "github.com": 60 },
     });
   });
+
+  it("does nothing when seconds is zero", async () => {
+    mockSet.mockResolvedValue(undefined);
+    await addSeconds("2024-06-08", "github.com", 0);
+    expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when seconds is negative", async () => {
+    mockSet.mockResolvedValue(undefined);
+    await addSeconds("2024-06-08", "github.com", -5);
+    expect(mockSet).not.toHaveBeenCalled();
+  });
 });
 
 describe("getWeekUsage", () => {

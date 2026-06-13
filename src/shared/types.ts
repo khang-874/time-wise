@@ -53,8 +53,8 @@ export interface TrackerState {
   currentHost: string | null;
   sessionStart: number | null;
   isWindowFocused: boolean;
-  /** True while Chrome's idle API reports the system as idle or locked. */
-  isIdle: boolean;
+  /** True while the screen is locked. Tracking is paused until the screen is unlocked. */
+  isLocked: boolean;
 }
 
 /**

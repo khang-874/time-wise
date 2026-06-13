@@ -56,10 +56,9 @@ describe("flushTime", () => {
 
   it("does nothing when window is not focused", async () => {
     await startTracking(1, "https://github.com");
-    await handleIdle("idle"); // unfocus
+    await handleFocusChanged(chrome.windows.WINDOW_ID_NONE);
     mockSet.mockClear();
     await flushTime();
-    // Set may have been called during startTracking/handleIdle, not after
     expect(mockSet).not.toHaveBeenCalled();
   });
 
@@ -117,58 +116,51 @@ describe("startTracking", () => {
 });
 
 describe("handleIdle", () => {
-  it("stops session on idle without losing data", async () => {
-    await startTracking(1, "https://github.com");
-    vi.advanceTimersByTime(15000);
+  it("does not stop tracking on idle — passive consumption should be counted", async () => {
+    await startTracking(1, "https://youtube.com");
+    const before = _getState().sessionStart;
+
     await handleIdle("idle");
 
-    expect(mockSet).toHaveBeenCalledWith(
-      expect.objectContaining({
-        "usage_2024-06-08": expect.objectContaining({ "github.com": 15 }),
-      })
-    );
-    expect(_getState().sessionStart).toBeNull();
+    expect(_getState().sessionStart).toBe(before);
+    expect(_getState().isLocked).toBe(false);
   });
 
-  it("stops session on locked", async () => {
+  it("flushes and stops session on locked", async () => {
     await startTracking(1, "https://github.com");
     vi.advanceTimersByTime(5000);
     await handleIdle("locked");
 
-    expect(mockSet).toHaveBeenCalled();
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        "usage_2024-06-08": expect.objectContaining({ "github.com": 5 }),
+      })
+    );
     expect(_getState().sessionStart).toBeNull();
+    expect(_getState().isLocked).toBe(true);
   });
 
-  it("resumes session on active when host is set", async () => {
+  it("resumes session on active after locked", async () => {
     await startTracking(1, "https://github.com");
-    await handleIdle("idle");
-    const before = _getState().sessionStart;
-    expect(before).toBeNull();
+    await handleIdle("locked");
+    expect(_getState().sessionStart).toBeNull();
 
     await handleIdle("active");
     expect(_getState().sessionStart).not.toBeNull();
+    expect(_getState().isLocked).toBe(false);
   });
 
   it("does not resume session on active when window is unfocused", async () => {
-    // Start tracking while window is focused
     await startTracking(1, "https://github.com");
     vi.advanceTimersByTime(10000);
 
-    // Window loses focus
     await handleFocusChanged(chrome.windows.WINDOW_ID_NONE);
-    mockSet.mockClear();
 
-    // System goes idle (while window is still unfocused)
-    await handleIdle("idle");
-
-    // System comes back active (but window still unfocused)
+    await handleIdle("locked");
     await handleIdle("active");
 
-    // Should NOT resume tracking because window is unfocused
-    // (we shouldn't have any new tracking time)
-    const stateAfterIdle = _getState();
-    expect(stateAfterIdle.isWindowFocused).toBe(false);
-    expect(stateAfterIdle.sessionStart).toBeNull();
+    expect(_getState().isWindowFocused).toBe(false);
+    expect(_getState().sessionStart).toBeNull();
   });
 });
 
@@ -323,7 +315,7 @@ describe("service worker suspension recovery", () => {
       currentHost: "github.com",
       sessionStart: sessionStartTime,
       isWindowFocused: true,
-      isIdle: false,
+      isLocked: false,
     });
 
     // 4. Flush alarm fires, waking the SW
@@ -348,7 +340,7 @@ describe("service worker suspension recovery", () => {
       currentHost: "d2l.ai",
       sessionStart: sessionStartTime,
       isWindowFocused: true,
-      isIdle: false,
+      isLocked: false,
     });
 
     // User switches to a different tab, waking the SW
@@ -382,7 +374,7 @@ describe("service worker suspension recovery", () => {
       currentHost: "github.com",
       sessionStart: sessionStartAfterFlush,
       isWindowFocused: true,
-      isIdle: false,
+      isLocked: false,
     });
 
     // mockGet needs to return existing usage for the addSeconds read
@@ -396,7 +388,7 @@ describe("service worker suspension recovery", () => {
             currentHost: "github.com",
             sessionStart: sessionStartAfterFlush,
             isWindowFocused: true,
-            isIdle: false,
+            isLocked: false,
           };
         } else if (k === "usage_2024-06-08") {
           result[k] = { "github.com": 60 }; // from earlier flush
@@ -421,7 +413,7 @@ describe("service worker suspension recovery", () => {
       currentHost: "github.com",
       sessionStart: null,
       isWindowFocused: false,
-      isIdle: false,
+      isLocked: false,
     });
 
     mockSet.mockClear();
@@ -444,7 +436,7 @@ describe("service worker suspension recovery", () => {
       currentHost: "github.com",
       sessionStart: sessionStartTime,
       isWindowFocused: true,
-      isIdle: false,
+      isLocked: false,
     });
 
     // Tab 1 finishes navigating to a new URL
@@ -473,7 +465,7 @@ describe("service worker suspension recovery", () => {
       currentHost: "github.com",
       sessionStart: sessionStartTime,
       isWindowFocused: true,
-      isIdle: false,
+      isLocked: false,
     });
 
     await handleTabRemoved(1);

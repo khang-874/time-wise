@@ -58,6 +58,7 @@ export async function addSeconds(
   host: string,
   seconds: number
 ): Promise<void> {
+  if (seconds <= 0) return;
   const usage = await getUsage(dateKey);
   usage[host] = (usage[host] ?? 0) + seconds;
   await setUsage(dateKey, usage);
@@ -122,7 +123,7 @@ const DEFAULT_TRACKER_STATE: TrackerState = {
   currentHost: null,
   sessionStart: null,
   isWindowFocused: true,
-  isIdle: false,
+  isLocked: false,
 };
 
 export async function getTrackerState(): Promise<TrackerState> {

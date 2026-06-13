@@ -19,7 +19,7 @@ let activeTabId: number | null = null;
 let sessionStart: number | null = null;
 let currentHost: string | null = null;
 let isWindowFocused = true;
-let isIdle = false;
+let isLocked = false;
 let stateLoaded = false;
 
 /**
@@ -34,7 +34,7 @@ async function loadState(): Promise<void> {
   currentHost = saved.currentHost;
   sessionStart = saved.sessionStart;
   isWindowFocused = saved.isWindowFocused;
-  isIdle = saved.isIdle;
+  isLocked = saved.isLocked;
 }
 
 /** Persists the current in-memory state to storage. */
@@ -44,7 +44,7 @@ async function persistState(): Promise<void> {
     currentHost,
     sessionStart,
     isWindowFocused,
-    isIdle,
+    isLocked,
   });
 }
 
@@ -67,20 +67,26 @@ export function getHost(url: string): string | null {
 /**
  * Writes elapsed seconds for the current session to storage.
  *
+ * @param resetTimer - When `true`, slides `sessionStart` forward to now after flushing
+ *   so the next flush only counts new elapsed time. Also starts a fresh session if
+ *   there was none (e.g. resuming after screen unlock). No-op when the screen is locked.
+ *   When `false` (default), `sessionStart` is left for the caller to update or clear.
+ *
  * @remarks
- * No-op when the window is unfocused, there is no active host, or the session
- * just started (elapsed ≤ 0). Does NOT reset `sessionStart` — callers that
- * want to continue the same session must reset it themselves.
+ * No-op when the window is unfocused or there is no active host.
  */
-export async function flushTime(): Promise<void> {
+export async function flushTime(resetTimer = false): Promise<void> {
   await loadState();
-  if (!currentHost || !sessionStart || !isWindowFocused) return;
+  if (!currentHost || !isWindowFocused) return;
 
-  const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
-  if (elapsed <= 0) return;
+  if (sessionStart) {
+    const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+    await addSeconds(toDateKey(new Date()), currentHost, elapsed);
+  }
 
-  const today = toDateKey(new Date());
-  await addSeconds(today, currentHost, elapsed);
+  if (!resetTimer || isLocked) return;
+  sessionStart = Date.now();
+  await persistState();
 }
 
 /**
@@ -94,21 +100,6 @@ export async function startTracking(tabId: number, url: string): Promise<void> {
   activeTabId = tabId;
   currentHost = getHost(url);
   sessionStart = currentHost ? Date.now() : null;
-  await persistState();
-}
-
-/**
- * Resumes tracking the current host if the window is focused.
- *
- * @remarks
- * Called when the system becomes active after idle/locked, or when resuming
- * from a suspended state. Flushes any previous session before resuming.
- */
-async function resumeTracking(): Promise<void> {
-  await flushTime();
-  if (currentHost && isWindowFocused && !isIdle) {
-    sessionStart = Date.now();
-  }
   await persistState();
 }
 
@@ -174,20 +165,21 @@ export async function handleFocusChanged(windowId: number): Promise<void> {
  * Handles `chrome.idle.onStateChanged`.
  *
  * @remarks
- * Flushes and pauses on `"idle"` or `"locked"` to avoid crediting AFK time.
- * Resumes on `"active"` only if there is a known current host.
+ * Only reacts to `"locked"` (screen lock) and `"active"` (unlock). The `"idle"`
+ * state (no mouse movement) is intentionally ignored so that passive consumption
+ * like watching a video is still tracked.
  *
  * @param state - The new idle state reported by Chrome.
  */
 export async function handleIdle(state: chrome.idle.IdleState): Promise<void> {
-  if (state === "idle" || state === "locked") {
+  if (state === "locked") {
     await flushTime();
     sessionStart = null;
-    isIdle = true;
+    isLocked = true;
     await persistState();
   } else if (state === "active") {
-    isIdle = false;
-    await resumeTracking();
+    isLocked = false;
+    await flushTime(true);
   }
 }
 
@@ -216,12 +208,12 @@ export async function handleTabRemoved(tabId: number): Promise<void> {
  * paused by idle or window blur — only continues an already-active session.
  */
 export async function handleFlushAlarm(): Promise<void> {
-  await resumeTracking();
+  await flushTime(true);
 }
 
 /** @internal Returns a snapshot of module state for use in tests. */
 export function _getState() {
-  return { activeTabId, sessionStart, currentHost, isWindowFocused, isIdle };
+  return { activeTabId, sessionStart, currentHost, isWindowFocused, isLocked };
 }
 
 /** @internal Resets all module state to initial values for test isolation. */
@@ -230,6 +222,6 @@ export function _resetState() {
   sessionStart = null;
   currentHost = null;
   isWindowFocused = true;
-  isIdle = false;
+  isLocked = false;
   stateLoaded = false;
 }

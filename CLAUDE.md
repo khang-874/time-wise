@@ -16,7 +16,7 @@ npm run dev           # vite dev with CRXJS hot reload
 
 All mutable state lives in `chrome.storage.local`. The popup is a thin display layer — it sends typed messages to the SW and reads from storage. The SW can be suspended by Chrome at any time, so nothing important is kept in memory.
 
-- `src/background/timeTracker.ts` — tracks the active tab domain and flushes elapsed seconds on tab/window/idle events and once per minute via a `chrome.alarms` flush alarm; persists tracking state (`TrackerState`) to storage so it survives SW suspension
+- `src/background/timeTracker.ts` — tracks the active tab domain and flushes elapsed seconds on tab/window/lock events and once per minute via a `chrome.alarms` flush alarm; persists tracking state (`TrackerState`) to storage so it survives SW suspension
 - `src/background/pomodoroTimer.ts` — Pomodoro state machine; uses `startedAt` (epoch ms) + `elapsedSeconds` so remaining time can be recomputed after SW suspension; phase transitions driven by a named `chrome.alarms` entry (`"pomodoro_end"`)
 - `src/background/messageHandler.ts` — single `chrome.runtime.onMessage` listener; switches on message type and delegates to the appropriate module
 - `src/background/index.ts` — only registers Chrome event listeners; contains no business logic; excluded from coverage
@@ -56,7 +56,7 @@ type PopupRequest =
 | `usage_YYYY-MM-DD` | `Record<hostname, seconds>` |
 | `pomodoroState` | `PomodoroState` |
 | `settings` | `PomodoroSettings` |
-| `trackerState` | `TrackerState` — active tab, host, session start, focus flag; recovered on SW wake-up |
+| `trackerState` | `TrackerState` — active tab, host, session start, focus flag, lock flag; recovered on SW wake-up |
 
 ## Testing
 
@@ -82,4 +82,6 @@ Coverage is configured in `vitest.config.ts`. The following are excluded:
 
 **Single storage boundary** — only `src/shared/storage.ts` touches `chrome.storage.local`. Migrating to IndexedDB in the future is a one-file change.
 
-**Persisted tracker state** — `timeTracker.ts` persists `TrackerState` (active tab, host, session start, focus flag) to storage on every state mutation and restores it lazily via `ensureStateLoaded()` on the first call after SW restart. This prevents time loss when Chrome suspends the SW while the user stays on a page.
+**Persisted tracker state** — `timeTracker.ts` persists `TrackerState` (active tab, host, session start, focus flag, lock flag) to storage on every state mutation and restores it lazily via `loadState()` on the first call after SW restart. This prevents time loss when Chrome suspends the SW while the user stays on a page.
+
+**Idle vs locked** — the `"idle"` Chrome idle state (no mouse/keyboard activity) is intentionally ignored so passive consumption like watching a video is still tracked. Only `"locked"` (screen lock) pauses tracking, since a locked screen is an unambiguous signal the user is away.
