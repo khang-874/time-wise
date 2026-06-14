@@ -6,7 +6,12 @@
  * and a future migration to IndexedDB is a single-file change.
  */
 
-import type { DailyUsage, PomodoroSettings, PomodoroState, TrackerState } from "./types";
+import type {
+  DailyUsage,
+  PomodoroSettings,
+  PomodoroState,
+  TrackerState,
+} from "./types";
 import {
   DEFAULT_POMODORO_STATE,
   DEFAULT_SETTINGS,
@@ -41,7 +46,7 @@ export async function getUsage(dateKey: string): Promise<DailyUsage> {
  */
 export async function setUsage(
   dateKey: string,
-  usage: DailyUsage
+  usage: DailyUsage,
 ): Promise<void> {
   await chrome.storage.local.set({ [usageKey(dateKey)]: usage });
 }
@@ -56,7 +61,7 @@ export async function setUsage(
 export async function addSeconds(
   dateKey: string,
   host: string,
-  seconds: number
+  seconds: number,
 ): Promise<void> {
   if (seconds <= 0) return;
   const usage = await getUsage(dateKey);
@@ -96,7 +101,9 @@ export async function clearDay(dateKey: string): Promise<void> {
  */
 export async function getPomodoroState(): Promise<PomodoroState> {
   const result = await chrome.storage.local.get(STORAGE_KEY_POMODORO);
-  return (result[STORAGE_KEY_POMODORO] as PomodoroState) ?? DEFAULT_POMODORO_STATE;
+  return (
+    (result[STORAGE_KEY_POMODORO] as PomodoroState) ?? DEFAULT_POMODORO_STATE
+  );
 }
 
 /** Persists the full Pomodoro state. Callers are responsible for computing the correct state. */
@@ -110,7 +117,10 @@ export async function setPomodoroState(state: PomodoroState): Promise<void> {
  */
 export async function getSettings(): Promise<PomodoroSettings> {
   const result = await chrome.storage.local.get(STORAGE_KEY_SETTINGS);
-  return { ...DEFAULT_SETTINGS, ...(result[STORAGE_KEY_SETTINGS] as Partial<PomodoroSettings>) };
+  return {
+    ...DEFAULT_SETTINGS,
+    ...(result[STORAGE_KEY_SETTINGS] as Partial<PomodoroSettings>),
+  };
 }
 
 /** Persists the full settings object. */
@@ -122,7 +132,6 @@ const DEFAULT_TRACKER_STATE: TrackerState = {
   activeTabId: null,
   currentHost: null,
   sessionStart: null,
-  isWindowFocused: true,
   isLocked: false,
   lastPersistedAt: null,
 };

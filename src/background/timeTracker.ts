@@ -18,7 +18,6 @@ import { toDateKey } from "../shared/timeUtils";
 let activeTabId: number | null = null;
 let sessionStart: number | null = null;
 let currentHost: string | null = null;
-let isWindowFocused = true;
 let isLocked = false;
 let stateLoaded = false;
 
@@ -36,14 +35,15 @@ async function loadState(): Promise<void> {
   activeTabId = saved.activeTabId;
   currentHost = saved.currentHost;
   sessionStart = saved.sessionStart;
-  isWindowFocused = saved.isWindowFocused;
   isLocked = saved.isLocked;
 
   // If the SW was dead longer than the flush-alarm interval (browser closed,
   // machine slept), the entire session context is stale — discard it so the
   // flush alarm can't start tracking the wrong host and Chrome's tab ID reuse
   // can't match a different tab.
-  const gap = saved.lastPersistedAt ? Date.now() - saved.lastPersistedAt : Infinity;
+  const gap = saved.lastPersistedAt
+    ? Date.now() - saved.lastPersistedAt
+    : Infinity;
   if (gap > STALE_SESSION_MS) {
     activeTabId = null;
     currentHost = null;
@@ -57,7 +57,6 @@ async function persistState(): Promise<void> {
     activeTabId,
     currentHost,
     sessionStart,
-    isWindowFocused,
     isLocked,
     lastPersistedAt: Date.now(),
   });
@@ -92,7 +91,7 @@ export function getHost(url: string): string | null {
  */
 export async function flushTime(resetTimer: boolean): Promise<void> {
   await loadState();
-  if (!currentHost || !isWindowFocused) return;
+  if (!currentHost) return;
 
   if (sessionStart) {
     const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
@@ -152,35 +151,6 @@ export async function handleTabUpdated(
 }
 
 /**
- * Handles `chrome.windows.onFocusChanged`.
- *
- * @remarks
- * `chrome.windows.WINDOW_ID_NONE` means all Chrome windows lost focus (e.g.
- * user switched to another app). In that case the current session is flushed
- * and paused. When focus returns, tracking resumes from the newly active tab.
- *
- * @param windowId - The focused window's ID, or `chrome.windows.WINDOW_ID_NONE`.
- */
-export async function handleFocusChanged(windowId: number): Promise<void> {
-  if (windowId === chrome.windows.WINDOW_ID_NONE) {
-    await flushTime(false);
-    isWindowFocused = false;
-    sessionStart = null;
-    await persistState();
-  } else {
-    isWindowFocused = true;
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, windowId });
-      if (tab && tab.id != null && tab.url) {
-        await trackTime(tab.id, tab.url);
-      }
-    } catch {
-      // window may have closed between the event firing and the query
-    }
-  }
-}
-
-/**
  * Handles `chrome.idle.onStateChanged`.
  *
  * @remarks
@@ -197,8 +167,11 @@ export async function handleIdle(state: chrome.idle.IdleState): Promise<void> {
     isLocked = true;
     await persistState();
   } else if (state === "active") {
+    await loadState();
     isLocked = false;
-    await flushTime(true);
+    if (currentHost) {
+      await flushTime(true);
+    }
   }
 }
 
@@ -228,7 +201,7 @@ export async function handleFlushAlarm(): Promise<void> {
 
 /** @internal Returns a snapshot of module state for use in tests. */
 export function _getState() {
-  return { activeTabId, sessionStart, currentHost, isWindowFocused, isLocked };
+  return { activeTabId, sessionStart, currentHost, isLocked };
 }
 
 /** @internal Resets all module state to initial values for test isolation. */
@@ -236,7 +209,6 @@ export function _resetState() {
   activeTabId = null;
   currentHost = null;
   sessionStart = null;
-  isWindowFocused = true;
   isLocked = false;
   stateLoaded = false;
 }

@@ -5,7 +5,6 @@ import {
   trackTime,
   handleTabActivated,
   handleTabUpdated,
-  handleFocusChanged,
   handleIdle,
   handleTabRemoved,
   handleFlushAlarm,
@@ -56,7 +55,6 @@ describe("flushTime", () => {
 
   it("does nothing when window is not focused", async () => {
     await trackTime(1, "https://github.com");
-    await handleFocusChanged(chrome.windows.WINDOW_ID_NONE);
     mockSet.mockClear();
     await flushTime(false);
     expect(mockSet).not.toHaveBeenCalled();
@@ -149,19 +147,6 @@ describe("handleIdle", () => {
     expect(_getState().sessionStart).not.toBeNull();
     expect(_getState().isLocked).toBe(false);
   });
-
-  it("does not resume session on active when window is unfocused", async () => {
-    await trackTime(1, "https://github.com");
-    vi.advanceTimersByTime(10000);
-
-    await handleFocusChanged(chrome.windows.WINDOW_ID_NONE);
-
-    await handleIdle("locked");
-    await handleIdle("active");
-
-    expect(_getState().isWindowFocused).toBe(false);
-    expect(_getState().sessionStart).toBeNull();
-  });
 });
 
 describe("handleFlushAlarm", () => {
@@ -224,48 +209,6 @@ describe("handleTabUpdated", () => {
   });
 });
 
-describe("handleFocusChanged", () => {
-  it("marks window as unfocused when WINDOW_ID_NONE", async () => {
-    await trackTime(1, "https://github.com");
-    vi.advanceTimersByTime(5000);
-    await handleFocusChanged(chrome.windows.WINDOW_ID_NONE);
-    expect(_getState().isWindowFocused).toBe(false);
-    expect(_getState().sessionStart).toBeNull();
-  });
-
-  it("resumes tracking when window regains focus", async () => {
-    (chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 1, url: "https://github.com" },
-    ]);
-    await handleFocusChanged(1);
-    expect(_getState().isWindowFocused).toBe(true);
-    expect(_getState().currentHost).toBe("github.com");
-  });
-
-  it("flushes previous session when window regains focus on a different tab", async () => {
-    // Start tracking on tab 1
-    await trackTime(1, "https://github.com");
-    vi.advanceTimersByTime(10000);
-
-    // Window is still focused but we'll simulate switching tabs while refocusing
-    // (This is an edge case where the tab switched before the focus event fired)
-    mockSet.mockClear();
-
-    (chrome.tabs.query as ReturnType<typeof vi.fn>).mockResolvedValue([
-      { id: 2, url: "https://youtube.com" },
-    ]);
-    await handleFocusChanged(1); // Regain focus, but now active tab is 2
-
-    // Should have flushed github.com (10 seconds) before switching to youtube.com
-    expect(mockSet).toHaveBeenCalledWith(
-      expect.objectContaining({
-        "usage_2024-06-08": expect.objectContaining({ "github.com": 10 }),
-      }),
-    );
-    expect(_getState().currentHost).toBe("youtube.com");
-  });
-});
-
 describe("handleTabRemoved", () => {
   it("flushes and clears state when active tab is removed", async () => {
     await trackTime(1, "https://github.com");
@@ -322,7 +265,6 @@ describe("service worker suspension recovery", () => {
       activeTabId: 1,
       currentHost: "github.com",
       sessionStart: sessionStartTime,
-      isWindowFocused: true,
       isLocked: false,
       lastPersistedAt: Date.now(),
     });
@@ -348,7 +290,6 @@ describe("service worker suspension recovery", () => {
       activeTabId: 1,
       currentHost: "d2l.ai",
       sessionStart: sessionStartTime,
-      isWindowFocused: true,
       isLocked: false,
       lastPersistedAt: Date.now(),
     });
@@ -384,7 +325,6 @@ describe("service worker suspension recovery", () => {
       activeTabId: 1,
       currentHost: "github.com",
       sessionStart: sessionStartAfterFlush,
-      isWindowFocused: true,
       isLocked: false,
       lastPersistedAt: restartTime,
     });
@@ -425,7 +365,6 @@ describe("service worker suspension recovery", () => {
       activeTabId: 1,
       currentHost: "github.com",
       sessionStart: null,
-      isWindowFocused: false,
       isLocked: false,
       lastPersistedAt: Date.now(),
     });
@@ -449,7 +388,6 @@ describe("service worker suspension recovery", () => {
       activeTabId: 1,
       currentHost: "github.com",
       sessionStart: sessionStartTime,
-      isWindowFocused: true,
       isLocked: false,
       lastPersistedAt: Date.now(),
     });
@@ -477,7 +415,6 @@ describe("service worker suspension recovery", () => {
       activeTabId: 1,
       currentHost: "github.com",
       sessionStart: sessionStartTime,
-      isWindowFocused: true,
       isLocked: false,
       lastPersistedAt: Date.now(),
     });
@@ -504,7 +441,6 @@ describe("service worker suspension recovery", () => {
       activeTabId: 1,
       currentHost: "monkeytype.com",
       sessionStart: sessionStartBeforeClose,
-      isWindowFocused: true,
       isLocked: false,
       lastPersistedAt: eightHoursAgo,
     });

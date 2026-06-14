@@ -52,7 +52,6 @@ export interface TrackerState {
   activeTabId: number | null;
   currentHost: string | null;
   sessionStart: number | null;
-  isWindowFocused: boolean;
   /** True while the screen is locked. Tracking is paused until the screen is unlocked. */
   isLocked: boolean;
   /**
