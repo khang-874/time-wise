@@ -7,6 +7,7 @@ export const STORAGE_KEY_SETTINGS = "settings";
 export const STORAGE_KEY_POMODORO = "pomodoroState";
 export const STORAGE_KEY_USAGE_PREFIX = "usage_";
 export const STORAGE_KEY_TRACKER = "trackerState";
+export const STORAGE_KEY_SESSIONS_PREFIX = "sessions_";
 
 export const IDLE_THRESHOLD_SECONDS = 60;
 
@@ -27,4 +28,8 @@ export const DEFAULT_POMODORO_STATE: PomodoroState = {
   completedToday: 0,
   lastCompletionDate: null,
   cyclePosition: 1,
+  currentTask: "",
+  currentTaskStartedAt: null,
+  currentTaskElapsedSeconds: 0,
+  completedTasks: [],
 };

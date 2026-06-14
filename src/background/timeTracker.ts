@@ -169,7 +169,10 @@ export async function handleIdle(state: chrome.idle.IdleState): Promise<void> {
   } else if (state === "active") {
     await loadState();
     isLocked = false;
-    await trackTime(activeTabId, currentHost);
+    if (currentHost) {
+      sessionStart = Date.now();
+    }
+    await persistState();
   }
 }
 

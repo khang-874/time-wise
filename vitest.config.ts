@@ -20,6 +20,7 @@ export default defineConfig({
         "*.config.*",
         "src/popup/main.tsx",
         "src/background/index.ts",
+        "src/content/overlay.ts",
         "src/shared/types.ts",
         "node_modules/**",
         "*.js",

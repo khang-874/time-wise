@@ -1,6 +1,31 @@
 /** Seconds spent per hostname for a single day. Key is the bare hostname (e.g. `"github.com"`). */
 export type DailyUsage = Record<string, number>;
 
+/** A single task worked on within a Pomodoro session. */
+export interface TaskEntry {
+  task: string;
+  /** Epoch ms when this task became active. */
+  startedAt: number;
+  /** Epoch ms when Done was clicked or the session ended. */
+  completedAt: number;
+  /** Actual focus time in seconds, excluding any pauses while this task was active. */
+  timeSpentSeconds: number;
+}
+
+/**
+ * Persisted record of a completed or abandoned Pomodoro work session.
+ * Stored under `sessions_YYYY-MM-DD` as an array.
+ */
+export interface PomodoroSession {
+  sessionStartedAt: number;
+  sessionCompletedAt: number;
+  durationSeconds: number;
+  elapsedSeconds: number;
+  sessionStatus: "completed" | "abandoned";
+  /** All tasks worked on during this session, in order. */
+  tasks: TaskEntry[];
+}
+
 /** The three phases of a Pomodoro cycle. */
 export type PomodoroPhase = "work" | "shortBreak" | "longBreak";
 
@@ -29,6 +54,14 @@ export interface PomodoroState {
   lastCompletionDate: string | null;
   /** Position within the current cycle (1 – {@link PomodoroSettings.longBreakInterval}). Resets to 1 after a long break. */
   cyclePosition: number;
+  /** The task currently being worked on. Empty string when no task is set. */
+  currentTask: string;
+  /** Epoch ms when the current task became active; `null` when no task is active. */
+  currentTaskStartedAt: number | null;
+  /** Focus seconds accumulated on the current task before the last pause. Mirrors `elapsedSeconds` at the task level. */
+  currentTaskElapsedSeconds: number;
+  /** Tasks explicitly completed (via "Done") within this Pomodoro session so far. */
+  completedTasks: TaskEntry[];
 }
 
 /** User-configurable Pomodoro durations and preferences. */
@@ -69,14 +102,16 @@ export interface TrackerState {
  */
 export type PopupRequest =
   | { type: "GET_POMODORO_STATE" }
-  | { type: "POMODORO_START" }
+  | { type: "POMODORO_START"; payload?: { task: string } }
   | { type: "POMODORO_PAUSE" }
   | { type: "POMODORO_RESET" }
   | { type: "POMODORO_SKIP" }
   | { type: "UPDATE_SETTINGS"; payload: PomodoroSettings }
   | { type: "GET_USAGE"; payload: { dateKey: string } }
   /** Flushes the in-progress session to storage before reading today's usage. */
-  | { type: "FLUSH_TIME" };
+  | { type: "FLUSH_TIME" }
+  | { type: "SET_TASK"; payload: { task: string } }
+  | { type: "COMPLETE_TASK" };
 
 /** Typed responses returned by the background service worker to the popup. */
 export type PopupResponse =

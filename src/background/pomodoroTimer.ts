@@ -8,14 +8,65 @@
  * alarms survive suspension while timers do not.
  */
 
-import type { PomodoroPhase, PomodoroSettings, PomodoroState } from "../shared/types";
+import type { PomodoroPhase, PomodoroSession, PomodoroSettings, PomodoroState, TaskEntry } from "../shared/types";
 import {
+  addSession,
   getPomodoroState,
   getSettings,
   setPomodoroState,
 } from "../shared/storage";
 import { ALARM_POMODORO_END } from "../shared/constants";
 import { toDateKey } from "../shared/timeUtils";
+
+/**
+ * Finalizes the current task into a `TaskEntry`, computing accurate focus time.
+ * Returns `null` when no task is active.
+ */
+function finalizeCurrentTask(state: PomodoroState, now: number): TaskEntry | null {
+  if (!state.currentTask) return null;
+  const runTime = state.running && state.startedAt
+    ? Math.floor((now - state.startedAt) / 1000)
+    : 0;
+  return {
+    task: state.currentTask,
+    startedAt: state.currentTaskStartedAt ?? now,
+    completedAt: now,
+    timeSpentSeconds: state.currentTaskElapsedSeconds + runTime,
+  };
+}
+
+/**
+ * Records the current Pomodoro work session (with all its tasks) to storage.
+ */
+async function recordSession(
+  state: PomodoroState,
+  sessionStatus: "completed" | "abandoned",
+  now: number,
+): Promise<void> {
+  const finalTask = finalizeCurrentTask(state, now);
+  const tasks = finalTask
+    ? [...state.completedTasks, finalTask]
+    : [...state.completedTasks];
+
+  const runTime = state.running && state.startedAt
+    ? Math.floor((now - state.startedAt) / 1000)
+    : 0;
+  const elapsedSeconds = sessionStatus === "completed"
+    ? state.durationSeconds
+    : state.elapsedSeconds + runTime;
+
+  const session: PomodoroSession = {
+    sessionStartedAt: state.startedAt
+      ? state.startedAt - state.elapsedSeconds * 1000
+      : now - elapsedSeconds * 1000,
+    sessionCompletedAt: now,
+    durationSeconds: state.durationSeconds,
+    elapsedSeconds,
+    sessionStatus,
+    tasks,
+  };
+  await addSession(toDateKey(new Date(now)), session);
+}
 
 /**
  * Returns the duration in seconds for a given phase based on current settings.
@@ -107,14 +158,24 @@ function sendNotification(phase: PomodoroPhase, settings: PomodoroSettings): voi
  *
  * @returns The updated {@link PomodoroState} after starting.
  */
-export async function startTimer(): Promise<PomodoroState> {
+export async function startTimer(task?: string): Promise<PomodoroState> {
   const state = await getPomodoroState();
   if (state.running) return state;
 
+  const now = Date.now();
+  const isFreshSession = state.elapsedSeconds === 0 && state.startedAt === null;
   const updated: PomodoroState = {
     ...state,
     running: true,
-    startedAt: Date.now(),
+    startedAt: now,
+    ...(isFreshSession && task !== undefined
+      ? {
+          currentTask: task,
+          currentTaskStartedAt: now,
+          currentTaskElapsedSeconds: 0,
+          completedTasks: [],
+        }
+      : {}),
   };
   await chrome.alarms.clear(ALARM_POMODORO_END);
   await scheduleAlarm(updated);
@@ -138,6 +199,7 @@ export async function pauseTimer(): Promise<PomodoroState> {
     running: false,
     startedAt: null,
     elapsedSeconds: state.elapsedSeconds + additionalElapsed,
+    currentTaskElapsedSeconds: state.currentTaskElapsedSeconds + additionalElapsed,
   };
   await chrome.alarms.clear(ALARM_POMODORO_END);
   await setPomodoroState(updated);
@@ -152,12 +214,21 @@ export async function pauseTimer(): Promise<PomodoroState> {
 export async function resetTimer(): Promise<PomodoroState> {
   const state = await getPomodoroState();
   const settings = await getSettings();
+
+  if (state.phase === "work" && (state.elapsedSeconds > 0 || state.startedAt !== null)) {
+    await recordSession(state, "abandoned", Date.now());
+  }
+
   const updated: PomodoroState = {
     ...state,
     running: false,
     startedAt: null,
     elapsedSeconds: 0,
     durationSeconds: phaseDuration(state.phase, settings),
+    currentTask: "",
+    currentTaskStartedAt: null,
+    currentTaskElapsedSeconds: 0,
+    completedTasks: [],
   };
   await chrome.alarms.clear(ALARM_POMODORO_END);
   await setPomodoroState(updated);
@@ -172,6 +243,11 @@ export async function resetTimer(): Promise<PomodoroState> {
 export async function skipPhase(): Promise<PomodoroState> {
   const state = await getPomodoroState();
   const settings = await getSettings();
+
+  if (state.phase === "work" && (state.elapsedSeconds > 0 || state.startedAt !== null)) {
+    await recordSession(state, "abandoned", Date.now());
+  }
+
   const next = nextPhase(state, settings);
   const updated: PomodoroState = {
     ...state,
@@ -180,6 +256,10 @@ export async function skipPhase(): Promise<PomodoroState> {
     startedAt: null,
     elapsedSeconds: 0,
     durationSeconds: phaseDuration(next.phase, settings),
+    currentTask: "",
+    currentTaskStartedAt: null,
+    currentTaskElapsedSeconds: 0,
+    completedTasks: [],
   };
   await chrome.alarms.clear(ALARM_POMODORO_END);
   await setPomodoroState(updated);
@@ -201,8 +281,13 @@ export async function handleAlarm(alarmName: string): Promise<void> {
 
   const state = await getPomodoroState();
   const settings = await getSettings();
-  const next = nextPhase(state, settings);
+  const now = Date.now();
 
+  if (state.phase === "work") {
+    await recordSession(state, "completed", now);
+  }
+
+  const next = nextPhase(state, settings);
   sendNotification(next.phase, settings);
 
   const updated: PomodoroState = {
@@ -212,6 +297,10 @@ export async function handleAlarm(alarmName: string): Promise<void> {
     startedAt: null,
     elapsedSeconds: 0,
     durationSeconds: phaseDuration(next.phase, settings),
+    currentTask: "",
+    currentTaskStartedAt: null,
+    currentTaskElapsedSeconds: 0,
+    completedTasks: [],
   };
   await setPomodoroState(updated);
 
@@ -220,6 +309,44 @@ export async function handleAlarm(alarmName: string): Promise<void> {
   } catch {
     // popup not open — expected
   }
+}
+
+/**
+ * Sets (or replaces) the current task label without touching the timer.
+ * Resets per-task elapsed tracking so the new task starts fresh.
+ */
+export async function setTask(task: string): Promise<PomodoroState> {
+  const state = await getPomodoroState();
+  const now = Date.now();
+  const updated: PomodoroState = {
+    ...state,
+    currentTask: task,
+    currentTaskStartedAt: now,
+    currentTaskElapsedSeconds: 0,
+  };
+  await setPomodoroState(updated);
+  return updated;
+}
+
+/**
+ * Marks the current task as done, logs it to `completedTasks`, and clears the active task.
+ * The Pomodoro timer continues running. No-op when no task is active.
+ */
+export async function completeTask(): Promise<PomodoroState> {
+  const state = await getPomodoroState();
+  if (!state.currentTask) return state;
+
+  const now = Date.now();
+  const entry = finalizeCurrentTask(state, now);
+  const updated: PomodoroState = {
+    ...state,
+    completedTasks: entry ? [...state.completedTasks, entry] : state.completedTasks,
+    currentTask: "",
+    currentTaskStartedAt: null,
+    currentTaskElapsedSeconds: 0,
+  };
+  await setPomodoroState(updated);
+  return updated;
 }
 
 /**

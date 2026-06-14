@@ -12,10 +12,17 @@ interface UsePomodoroStateResult {
    * Resynced from the service worker on mount and after every command.
    */
   remainingSeconds: number;
+  /** Local editable copy of the current task label. Synced from SW on mount and after commands. */
+  currentTask: string;
+  setCurrentTask: (task: string) => void;
   start: () => Promise<void>;
   pause: () => Promise<void>;
   reset: () => Promise<void>;
   skip: () => Promise<void>;
+  /** Saves the current task label to the SW without stopping the timer. */
+  saveTask: (task: string) => Promise<void>;
+  /** Marks the current task done, logs it, and clears the active task. */
+  completeTask: () => Promise<void>;
 }
 
 /**
@@ -38,16 +45,21 @@ export function usePomodoroState(): UsePomodoroStateResult {
   const [remainingSeconds, setRemainingSeconds] = useState(
     DEFAULT_POMODORO_STATE.durationSeconds
   );
+  const [currentTask, setCurrentTask] = useState("");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const syncState = useCallback((s: PomodoroState) => {
+    setState(s);
+    setCurrentTask(s.currentTask);
+    setRemainingSeconds(computeRemainingSeconds(s.durationSeconds, s.startedAt, s.elapsedSeconds));
+  }, []);
 
   const syncFromSW = useCallback(async () => {
     const response = await sendMessage({ type: "GET_POMODORO_STATE" });
     if (response.type === "POMODORO_STATE") {
-      const s = response.payload;
-      setState(s);
-      setRemainingSeconds(computeRemainingSeconds(s.durationSeconds, s.startedAt, s.elapsedSeconds));
+      syncState(response.payload);
     }
-  }, []);
+  }, [syncState]);
 
   useEffect(() => {
     syncFromSW();
@@ -72,32 +84,40 @@ export function usePomodoroState(): UsePomodoroStateResult {
   useEffect(() => {
     const listener = (msg: { type: string; payload?: PomodoroState }) => {
       if (msg.type === "POMODORO_PHASE_CHANGE" && msg.payload) {
-        const s = msg.payload;
-        setState(s);
-        setRemainingSeconds(
-          computeRemainingSeconds(s.durationSeconds, s.startedAt, s.elapsedSeconds)
-        );
+        syncState(msg.payload);
       }
     };
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, []);
 
-  const sendCommand = async (type: "POMODORO_START" | "POMODORO_PAUSE" | "POMODORO_RESET" | "POMODORO_SKIP") => {
-    const response = await sendMessage({ type });
+  const sendCommand = async (
+    request:
+      | { type: "POMODORO_START"; payload?: { task: string } }
+      | { type: "POMODORO_PAUSE" | "POMODORO_RESET" | "POMODORO_SKIP" }
+  ) => {
+    const response = await sendMessage(request);
     if (response.type === "POMODORO_STATE") {
-      const s = response.payload;
-      setState(s);
-      setRemainingSeconds(computeRemainingSeconds(s.durationSeconds, s.startedAt, s.elapsedSeconds));
+      syncState(response.payload);
     }
   };
 
   return {
     state,
     remainingSeconds,
-    start: () => sendCommand("POMODORO_START"),
-    pause: () => sendCommand("POMODORO_PAUSE"),
-    reset: () => sendCommand("POMODORO_RESET"),
-    skip: () => sendCommand("POMODORO_SKIP"),
+    currentTask,
+    setCurrentTask,
+    start: () => sendCommand({ type: "POMODORO_START", payload: { task: currentTask } }),
+    pause: () => sendCommand({ type: "POMODORO_PAUSE" }),
+    reset: () => sendCommand({ type: "POMODORO_RESET" }),
+    skip: () => sendCommand({ type: "POMODORO_SKIP" }),
+    saveTask: async (task: string) => {
+      const response = await sendMessage({ type: "SET_TASK", payload: { task } });
+      if (response.type === "POMODORO_STATE") syncState(response.payload);
+    },
+    completeTask: async () => {
+      const response = await sendMessage({ type: "COMPLETE_TASK" });
+      if (response.type === "POMODORO_STATE") syncState(response.payload);
+    },
   };
 }

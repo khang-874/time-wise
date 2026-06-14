@@ -1,12 +1,13 @@
 interface Props {
   running: boolean;
+  startDisabled?: boolean;
   onStart: () => void;
   onPause: () => void;
   onReset: () => void;
   onSkip: () => void;
 }
 
-export default function TimerControls({ running, onStart, onPause, onReset, onSkip }: Props) {
+export default function TimerControls({ running, startDisabled, onStart, onPause, onReset, onSkip }: Props) {
   return (
     <div className="flex items-center justify-center gap-3 pb-4">
       <button
@@ -29,7 +30,8 @@ export default function TimerControls({ running, onStart, onPause, onReset, onSk
         <button
           onClick={onStart}
           aria-label="Start timer"
-          className="px-6 py-2.5 bg-gray-800 text-white rounded-full text-sm font-medium hover:bg-gray-700 transition-colors"
+          disabled={startDisabled}
+          className="px-6 py-2.5 bg-gray-800 text-white rounded-full text-sm font-medium hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Start
         </button>

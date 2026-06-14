@@ -9,7 +9,10 @@ import {
   setPomodoroState,
   getSettings,
   setSettings,
+  getSessions,
+  addSession,
 } from "../../shared/storage";
+import type { PomodoroSession } from "../../shared/types";
 import { DEFAULT_POMODORO_STATE, DEFAULT_SETTINGS } from "../../shared/constants";
 
 const mockGet = chrome.storage.local.get as ReturnType<typeof vi.fn>;
@@ -153,5 +156,49 @@ describe("setSettings", () => {
     mockSet.mockResolvedValue(undefined);
     await setSettings(DEFAULT_SETTINGS);
     expect(mockSet).toHaveBeenCalledWith({ settings: DEFAULT_SETTINGS });
+  });
+});
+
+const SESSION_STUB: PomodoroSession = {
+  sessionStartedAt: 1000,
+  sessionCompletedAt: 2000,
+  durationSeconds: 1500,
+  elapsedSeconds: 1000,
+  sessionStatus: "completed",
+  tasks: [{ task: "Write tests", startedAt: 1000, completedAt: 2000, timeSpentSeconds: 1000 }],
+};
+
+describe("getSessions", () => {
+  it("returns stored sessions", async () => {
+    mockGet.mockResolvedValue({ "sessions_2024-06-08": [SESSION_STUB] });
+    const result = await getSessions("2024-06-08");
+    expect(result).toEqual([SESSION_STUB]);
+  });
+
+  it("returns empty array when no data exists", async () => {
+    mockGet.mockResolvedValue({});
+    const result = await getSessions("2024-06-08");
+    expect(result).toEqual([]);
+  });
+});
+
+describe("addSession", () => {
+  it("appends a session to an empty list", async () => {
+    mockGet.mockResolvedValue({});
+    mockSet.mockResolvedValue(undefined);
+    await addSession("2024-06-08", SESSION_STUB);
+    expect(mockSet).toHaveBeenCalledWith({
+      "sessions_2024-06-08": [SESSION_STUB],
+    });
+  });
+
+  it("appends to an existing list without overwriting", async () => {
+    const existing: PomodoroSession = { ...SESSION_STUB, sessionStartedAt: 500, sessionCompletedAt: 900 };
+    mockGet.mockResolvedValue({ "sessions_2024-06-08": [existing] });
+    mockSet.mockResolvedValue(undefined);
+    await addSession("2024-06-08", SESSION_STUB);
+    expect(mockSet).toHaveBeenCalledWith({
+      "sessions_2024-06-08": [existing, SESSION_STUB],
+    });
   });
 });

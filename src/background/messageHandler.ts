@@ -13,6 +13,8 @@ import {
   pauseTimer,
   resetTimer,
   skipPhase,
+  setTask,
+  completeTask,
   getCurrentState,
   updateSettings,
 } from "./pomodoroTimer";
@@ -49,7 +51,7 @@ async function handleMessage(request: PopupRequest): Promise<PopupResponse> {
       return { type: "POMODORO_STATE", payload: state };
     }
     case "POMODORO_START": {
-      const state = await startTimer();
+      const state = await startTimer(request.payload?.task);
       return { type: "POMODORO_STATE", payload: state };
     }
     case "POMODORO_PAUSE": {
@@ -76,6 +78,14 @@ async function handleMessage(request: PopupRequest): Promise<PopupResponse> {
     case "FLUSH_TIME": {
       await handleFlushAlarm();
       return { type: "OK" };
+    }
+    case "SET_TASK": {
+      const state = await setTask(request.payload.task);
+      return { type: "POMODORO_STATE", payload: state };
+    }
+    case "COMPLETE_TASK": {
+      const state = await completeTask();
+      return { type: "POMODORO_STATE", payload: state };
     }
   }
 }

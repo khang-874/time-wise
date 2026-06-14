@@ -3,13 +3,17 @@ import { usePomodoroState } from "../../hooks/usePomodoroState";
 import { useSettings } from "../../hooks/useSettings";
 import TimerDisplay from "./TimerDisplay";
 import TimerControls from "./TimerControls";
+import TaskInput from "./TaskInput";
 import SessionCounter from "./SessionCounter";
 import Settings from "./Settings";
 
 export default function PomodoroTab() {
-  const { state, remainingSeconds, start, pause, reset, skip } = usePomodoroState();
+  const { state, remainingSeconds, currentTask, setCurrentTask, start, pause, reset, skip, saveTask, completeTask } = usePomodoroState();
   const { settings, saveSettings } = useSettings();
   const [showSettings, setShowSettings] = useState(false);
+
+  const isFresh = state.phase === "work" && state.elapsedSeconds === 0 && !state.running;
+  const startDisabled = isFresh && !currentTask.trim();
 
   return (
     <div className="flex flex-col">
@@ -18,8 +22,18 @@ export default function PomodoroTab() {
         phase={state.phase}
         durationSeconds={state.durationSeconds}
       />
+      <TaskInput
+        currentTask={currentTask}
+        phase={state.phase}
+        running={state.running}
+        elapsedSeconds={state.elapsedSeconds}
+        onChange={setCurrentTask}
+        onSave={saveTask}
+        onComplete={completeTask}
+      />
       <TimerControls
         running={state.running}
+        startDisabled={startDisabled}
         onStart={start}
         onPause={pause}
         onReset={reset}

@@ -8,6 +8,7 @@
 
 import type {
   DailyUsage,
+  PomodoroSession,
   PomodoroSettings,
   PomodoroState,
   TrackerState,
@@ -16,6 +17,7 @@ import {
   DEFAULT_POMODORO_STATE,
   DEFAULT_SETTINGS,
   STORAGE_KEY_POMODORO,
+  STORAGE_KEY_SESSIONS_PREFIX,
   STORAGE_KEY_SETTINGS,
   STORAGE_KEY_TRACKER,
   STORAGE_KEY_USAGE_PREFIX,
@@ -126,6 +128,22 @@ export async function getSettings(): Promise<PomodoroSettings> {
 /** Persists the full settings object. */
 export async function setSettings(settings: PomodoroSettings): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEY_SETTINGS]: settings });
+}
+
+function sessionsKey(dateKey: string): string {
+  return `${STORAGE_KEY_SESSIONS_PREFIX}${dateKey}`;
+}
+
+export async function getSessions(dateKey: string): Promise<PomodoroSession[]> {
+  const key = sessionsKey(dateKey);
+  const result = await chrome.storage.local.get(key);
+  return (result[key] as PomodoroSession[]) ?? [];
+}
+
+export async function addSession(dateKey: string, session: PomodoroSession): Promise<void> {
+  const existing = await getSessions(dateKey);
+  existing.push(session);
+  await chrome.storage.local.set({ [sessionsKey(dateKey)]: existing });
 }
 
 const DEFAULT_TRACKER_STATE: TrackerState = {

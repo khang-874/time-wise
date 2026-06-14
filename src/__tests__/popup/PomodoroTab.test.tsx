@@ -18,7 +18,8 @@ beforeEach(() => {
       return { type: "POMODORO_STATE", payload: makeState() };
     }
     if (msg.type === "POMODORO_START") {
-      return { type: "POMODORO_STATE", payload: makeState({ running: true, startedAt: Date.now() }) };
+      const task = (msg as { payload?: { task?: string } }).payload?.task ?? "";
+      return { type: "POMODORO_STATE", payload: makeState({ running: true, startedAt: Date.now(), currentTask: task, elapsedSeconds: 0 }) };
     }
     if (msg.type === "POMODORO_PAUSE") {
       return { type: "POMODORO_STATE", payload: makeState({ running: false }) };
@@ -45,7 +46,9 @@ describe("PomodoroTab", () => {
 
   it("shows Pause button after starting", async () => {
     render(<PomodoroTab />);
-    await waitFor(() => screen.getByLabelText("Start timer"));
+    await waitFor(() => screen.getByLabelText("Session task"));
+    fireEvent.change(screen.getByLabelText("Session task"), { target: { value: "Write tests" } });
+    await waitFor(() => expect(screen.getByLabelText("Start timer")).not.toBeDisabled());
     fireEvent.click(screen.getByLabelText("Start timer"));
     await waitFor(() => expect(screen.getByLabelText("Pause timer")).toBeInTheDocument());
   });
