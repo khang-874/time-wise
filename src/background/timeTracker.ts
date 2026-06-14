@@ -169,9 +169,7 @@ export async function handleIdle(state: chrome.idle.IdleState): Promise<void> {
   } else if (state === "active") {
     await loadState();
     isLocked = false;
-    if (currentHost) {
-      await flushTime(true);
-    }
+    await trackTime(activeTabId, currentHost);
   }
 }
 

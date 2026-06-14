@@ -16,7 +16,7 @@ npm run dev           # vite dev with CRXJS hot reload
 
 All mutable state lives in `chrome.storage.local`. The popup is a thin display layer — it sends typed messages to the SW and reads from storage. The SW can be suspended by Chrome at any time, so nothing important is kept in memory.
 
-- `src/background/timeTracker.ts` — tracks the active tab domain and flushes elapsed seconds on tab/window/lock events and once per minute via a `chrome.alarms` flush alarm; persists tracking state (`TrackerState`) to storage so it survives SW suspension
+- `src/background/timeTracker.ts` — tracks the active tab domain and flushes elapsed seconds on tab/lock events and once per minute via a `chrome.alarms` flush alarm; persists tracking state (`TrackerState`) to storage so it survives SW suspension
 - `src/background/pomodoroTimer.ts` — Pomodoro state machine; uses `startedAt` (epoch ms) + `elapsedSeconds` so remaining time can be recomputed after SW suspension; phase transitions driven by a named `chrome.alarms` entry (`"pomodoro_end"`)
 - `src/background/messageHandler.ts` — single `chrome.runtime.onMessage` listener; switches on message type and delegates to the appropriate module
 - `src/background/index.ts` — only registers Chrome event listeners; contains no business logic; excluded from coverage
@@ -56,7 +56,7 @@ type PopupRequest =
 | `usage_YYYY-MM-DD` | `Record<hostname, seconds>` |
 | `pomodoroState` | `PomodoroState` |
 | `settings` | `PomodoroSettings` |
-| `trackerState` | `TrackerState` — active tab, host, session start, focus flag, lock flag; recovered on SW wake-up |
+| `trackerState` | `TrackerState` — active tab, host, session start, lock flag, `lastPersistedAt`; recovered on SW wake-up |
 
 ## Testing
 
@@ -82,12 +82,14 @@ Coverage is configured in `vitest.config.ts`. The following are excluded:
 
 **Single storage boundary** — only `src/shared/storage.ts` touches `chrome.storage.local`. Migrating to IndexedDB in the future is a one-file change.
 
-**Persisted tracker state** — `timeTracker.ts` persists `TrackerState` (active tab, host, session start, focus flag, lock flag, `lastPersistedAt`) to storage on every state mutation and restores it lazily via `loadState()` on the first call after SW restart. This prevents time loss when Chrome suspends the SW while the user stays on a page.
+**Persisted tracker state** — `timeTracker.ts` persists `TrackerState` (active tab, host, session start, lock flag, `lastPersistedAt`) to storage on every state mutation and restores it lazily via `loadState()` on the first call after SW restart. This prevents time loss when Chrome suspends the SW while the user stays on a page.
 
 **`lastPersistedAt` guards against stale sessions** — every `persistState()` call stamps the current epoch ms into `lastPersistedAt`. On SW wake, `loadState()` compares `Date.now()` against this value; if the gap exceeds 2 minutes (the flush-alarm period), the SW was dead (browser closed, machine slept) and `sessionStart`, `currentHost`, and `activeTabId` are all cleared. Clearing just `sessionStart` is not enough: a stale `currentHost` would cause the flush alarm's `resetTimer` path to start a new session for the wrong host, and a stale `activeTabId` could match a different tab if Chrome reuses the ID.
 
-**Idle vs locked** — the `"idle"` Chrome idle state (no mouse/keyboard activity) is intentionally ignored so passive consumption like watching a video is still tracked. Only `"locked"` (screen lock) pauses tracking, since a locked screen is an unambiguous signal the user is away.
+**Window focus not tracked** — `chrome.windows.onFocusChanged` is not listened to. Time is tracked as long as Chrome has an active tab and the screen is unlocked, even if the user has switched to another application.
+
+**Idle vs locked** — the `"idle"` Chrome idle state (no mouse/keyboard activity) is intentionally ignored so passive consumption like watching a video is still tracked. Only `"locked"` (screen lock) pauses tracking, since a locked screen is an unambiguous signal the user is away. On unlock (`"active"`), `trackTime(activeTabId, currentHost)` is called to start a fresh session for the current tab rather than `flushTime(true)`, so the session timestamp is always anchored to the moment the screen was unlocked.
 
 **`trackTime(tabId, url)`** — the single function for switching the tracking target. Accepts nullable params: called with real values to start tracking a tab, called with `(null, null)` to stop tracking entirely (e.g. when the active tab is closed). Internally flushes the previous session before setting the new target, so callers never need to call `flushTime` separately.
 
-**`flushTime(resetTimer)`** — saves elapsed seconds for the current session. When `resetTimer` is `true`, slides `sessionStart` forward to now so the next flush only counts new elapsed time (used by the periodic alarm and on screen unlock). When `false`, leaves `sessionStart` for the caller to update or clear.
+**`flushTime(resetTimer)`** — saves elapsed seconds for the current session. When `resetTimer` is `true`, slides `sessionStart` forward to now so the next flush only counts new elapsed time (used by the periodic alarm). When `false`, leaves `sessionStart` for the caller to update or clear.
