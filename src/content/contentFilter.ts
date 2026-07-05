@@ -50,6 +50,68 @@ function showFilterOverlay(reason: string): void {
   document.getElementById("timewise-proceed")?.addEventListener("click", () => el.remove());
 }
 
+/**
+ * Collects all matchable text from a YouTube feed/search card.
+ * - Title: always present
+ * - Channel name: present in both home feed and search results
+ * - Description snippet: only shown in search results (e.g. "League of Legends gameplay…")
+ * - Hashtag chips: occasionally shown in feed cards
+ *
+ * NOTE: YouTube home feed cards do NOT expose the game category in the DOM —
+ * there is no way to detect "this is a LoL video" from the card alone when the
+ * title and channel name don't contain the keyword. The game tag only appears
+ * on the watch page (handled by getYoutubeWatchPageText).
+ */
+function getYoutubeFeedItemText(item: HTMLElement): string {
+  const parts: string[] = [];
+  // Title
+  parts.push(item.querySelector<HTMLElement>("#video-title, yt-formatted-string#video-title")?.textContent ?? "");
+  // Channel name — try the inner formatted string first for precision, fall back to the element
+  parts.push(
+    item.querySelector<HTMLElement>(
+      "ytd-channel-name yt-formatted-string, ytd-channel-name #text, #owner-text yt-formatted-string"
+    )?.textContent ?? ""
+  );
+  // Description snippet — present in search results (ytd-video-renderer), not in home feed
+  parts.push(item.querySelector<HTMLElement>("#description-text")?.textContent ?? "");
+  // Hashtag chips
+  item.querySelectorAll<HTMLElement>("yt-chip-cloud-chip-renderer, a[href*='hashtag']").forEach((el) => {
+    parts.push(el.textContent ?? "");
+  });
+  return parts.join(" ");
+}
+
+/**
+ * Collects all matchable text from the current YouTube watch page:
+ * title + hashtags shown below the title + game/category label.
+ * This is why a filter for "lol" catches "#lolclips" and "league of legends"
+ * catches the game tag even when neither appears in the video title itself.
+ */
+function getYoutubeWatchPageText(): string {
+  const parts: string[] = [];
+  // Main title
+  parts.push(
+    document.querySelector<HTMLElement>(
+      "ytd-watch-metadata h1 yt-formatted-string, h1.title"
+    )?.textContent ?? ""
+  );
+  // Channel name on watch page
+  parts.push(
+    document.querySelector<HTMLElement>(
+      "#channel-name yt-formatted-string, ytd-channel-name yt-formatted-string"
+    )?.textContent ?? ""
+  );
+  // Hashtags shown in the description header (e.g. #lolclips #caedrel)
+  parts.push(
+    document.querySelector<HTMLElement>("ytd-video-description-header-renderer")?.textContent ?? ""
+  );
+  // Game / category label (e.g. "League of Legends")
+  parts.push(
+    document.querySelector<HTMLElement>("ytd-game-details-renderer, .ytp-game-title")?.textContent ?? ""
+  );
+  return parts.join(" ");
+}
+
 function filterYoutubeFeeds(root: Element | Document = document): void {
   const selectors = [
     "ytd-rich-item-renderer",
@@ -58,10 +120,7 @@ function filterYoutubeFeeds(root: Element | Document = document): void {
     "ytd-reel-item-renderer",
   ].join(",");
   root.querySelectorAll<HTMLElement>(selectors).forEach((item) => {
-    const title =
-      item.querySelector<HTMLElement>("#video-title, yt-formatted-string#video-title")
-        ?.textContent ?? "";
-    if (shouldHideYoutubeItem(title, currentFilters)) {
+    if (shouldHideYoutubeItem(getYoutubeFeedItemText(item), currentFilters)) {
       item.style.display = "none";
     }
   });
@@ -70,12 +129,9 @@ function filterYoutubeFeeds(root: Element | Document = document): void {
 function checkYoutubeCurrentVideo(): void {
   if (!window.location.pathname.startsWith("/watch")) return;
   const tryBlock = (): boolean => {
-    const titleEl = document.querySelector<HTMLElement>(
-      "ytd-watch-metadata h1 yt-formatted-string, h1.title"
-    );
-    const title = titleEl?.textContent ?? "";
-    if (!title) return false;
-    if (shouldHideYoutubeItem(title, currentFilters)) {
+    const text = getYoutubeWatchPageText();
+    if (!text.trim()) return false;
+    if (shouldHideYoutubeItem(text, currentFilters)) {
       showFilterOverlay("This video matches your content filter.");
     }
     return true;
