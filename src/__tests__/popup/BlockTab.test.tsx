@@ -252,4 +252,31 @@ describe("BlockTab", () => {
       );
     });
   });
+
+  describe("ShortsToggle", () => {
+    it("reflects the current blockYoutubeShorts setting", async () => {
+      mockSendMessage.mockResolvedValueOnce({
+        type: "BLOCK_SETTINGS",
+        payload: makeSettings({ blockYoutubeShorts: true }),
+      });
+      render(<BlockTab />);
+      await waitFor(() => expect(screen.getByLabelText("Block YouTube Shorts")).toBeChecked());
+    });
+
+    it("sends SET_BLOCK_YOUTUBE_SHORTS when toggled off", async () => {
+      mockSendMessage
+        .mockResolvedValueOnce({ type: "BLOCK_SETTINGS", payload: makeSettings({ blockYoutubeShorts: true }) })
+        .mockResolvedValueOnce({ type: "BLOCK_SETTINGS", payload: makeSettings({ blockYoutubeShorts: false }) });
+      render(<BlockTab />);
+      await waitFor(() => expect(screen.getByLabelText("Block YouTube Shorts")).toBeChecked());
+      fireEvent.click(screen.getByLabelText("Block YouTube Shorts"));
+      await waitFor(() =>
+        expect(mockSendMessage).toHaveBeenCalledWith({
+          type: "SET_BLOCK_YOUTUBE_SHORTS",
+          payload: { enabled: false },
+        })
+      );
+      await waitFor(() => expect(screen.getByLabelText("Block YouTube Shorts")).not.toBeChecked());
+    });
+  });
 });

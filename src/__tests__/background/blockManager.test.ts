@@ -9,6 +9,7 @@ import {
   requestRemoveContentFilter,
   cancelRemoveContentFilter,
   importBlockSettings,
+  setBlockYoutubeShorts,
   syncDnrRulesOnStartup,
 } from "../../background/blockManager";
 import { DEFAULT_BLOCK_SETTINGS, REMOVAL_DELAY_MS } from "../../shared/constants";
@@ -375,5 +376,22 @@ describe("syncDnrRulesOnStartup", () => {
     mockGetDnr.mockResolvedValue([]);
     await syncDnrRulesOnStartup();
     expect(mockUpdateDnr).not.toHaveBeenCalled();
+  });
+});
+
+describe("setBlockYoutubeShorts", () => {
+  it("enables the toggle", async () => {
+    mockGet.mockResolvedValue({ blockSettings: { ...DEFAULT_BLOCK_SETTINGS, blockYoutubeShorts: false } });
+    const updated = await setBlockYoutubeShorts(true);
+    expect(updated.blockYoutubeShorts).toBe(true);
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({ blockSettings: expect.objectContaining({ blockYoutubeShorts: true }) })
+    );
+  });
+
+  it("disables the toggle", async () => {
+    mockGet.mockResolvedValue({ blockSettings: { ...DEFAULT_BLOCK_SETTINGS, blockYoutubeShorts: true } });
+    const updated = await setBlockYoutubeShorts(false);
+    expect(updated.blockYoutubeShorts).toBe(false);
   });
 });

@@ -215,3 +215,11 @@ export async function importBlockSettings(imported: {
   }
   return settings;
 }
+
+/** Toggles the unconditional YouTube Shorts block (independent of content filter keywords). */
+export async function setBlockYoutubeShorts(enabled: boolean): Promise<BlockSettings> {
+  const settings = await getBlockSettings();
+  const updated: BlockSettings = { ...settings, blockYoutubeShorts: enabled };
+  await setBlockSettings(updated);
+  return updated;
+}

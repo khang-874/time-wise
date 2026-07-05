@@ -129,4 +129,13 @@ describe("block message handling", () => {
     })) as { type: string };
     expect(response.type).toBe("BLOCK_SETTINGS");
   });
+
+  it("SET_BLOCK_YOUTUBE_SHORTS returns BLOCK_SETTINGS with the toggle applied", async () => {
+    const response = (await callListener({
+      type: "SET_BLOCK_YOUTUBE_SHORTS",
+      payload: { enabled: false },
+    })) as { type: string; payload: { blockYoutubeShorts: boolean } };
+    expect(response.type).toBe("BLOCK_SETTINGS");
+    expect(response.payload.blockYoutubeShorts).toBe(false);
+  });
 });

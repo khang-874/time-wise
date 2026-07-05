@@ -166,9 +166,17 @@ export async function setTrackerState(state: TrackerState): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEY_TRACKER]: state });
 }
 
+/**
+ * Returns current block settings, merging stored values over {@link DEFAULT_BLOCK_SETTINGS}.
+ * Merging (rather than an all-or-nothing fallback) means new fields added to {@link BlockSettings}
+ * still get their default for installs that saved settings before that field existed.
+ */
 export async function getBlockSettings(): Promise<BlockSettings> {
   const result = await chrome.storage.local.get(STORAGE_KEY_BLOCK_SETTINGS);
-  return (result[STORAGE_KEY_BLOCK_SETTINGS] as BlockSettings) ?? DEFAULT_BLOCK_SETTINGS;
+  return {
+    ...DEFAULT_BLOCK_SETTINGS,
+    ...(result[STORAGE_KEY_BLOCK_SETTINGS] as Partial<BlockSettings>),
+  };
 }
 
 export async function setBlockSettings(settings: BlockSettings): Promise<void> {

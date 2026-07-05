@@ -131,6 +131,8 @@ export interface ContentFilter {
 export interface BlockSettings {
   blockedDomains: BlockedDomain[];
   contentFilters: ContentFilter[];
+  /** When true, all YouTube Shorts are redirected to `blocked.html`, independent of any content filter keyword. */
+  blockYoutubeShorts: boolean;
 }
 
 /**
@@ -158,6 +160,7 @@ export type PopupRequest =
   | { type: "REMOVE_CONTENT_FILTER"; payload: { id: string } }
   | { type: "REQUEST_REMOVE_CONTENT_FILTER"; payload: { id: string } }
   | { type: "CANCEL_REMOVE_CONTENT_FILTER"; payload: { id: string } }
+  | { type: "SET_BLOCK_YOUTUBE_SHORTS"; payload: { enabled: boolean } }
   | {
       type: "IMPORT_BLOCK_SETTINGS";
       payload: {

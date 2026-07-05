@@ -27,6 +27,7 @@ export const DEFAULT_SETTINGS: PomodoroSettings = {
 export const DEFAULT_BLOCK_SETTINGS: BlockSettings = {
   blockedDomains: [],
   contentFilters: [],
+  blockYoutubeShorts: true,
 };
 
 export const DEFAULT_POMODORO_STATE: PomodoroState = {

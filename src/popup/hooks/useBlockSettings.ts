@@ -63,6 +63,11 @@ export function useBlockSettings() {
     if (resp.type === "BLOCK_SETTINGS") setBlockSettings(resp.payload);
   };
 
+  const setBlockYoutubeShorts = async (enabled: boolean) => {
+    const resp = await sendMessage({ type: "SET_BLOCK_YOUTUBE_SHORTS", payload: { enabled } });
+    if (resp.type === "BLOCK_SETTINGS") setBlockSettings(resp.payload);
+  };
+
   return {
     blockSettings,
     addDomain,
@@ -74,5 +79,6 @@ export function useBlockSettings() {
     requestRemoveFilter,
     cancelRemoveFilter,
     importSettings,
+    setBlockYoutubeShorts,
   };
 }

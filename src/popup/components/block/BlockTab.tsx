@@ -2,6 +2,7 @@ import { useBlockSettings } from "../../hooks/useBlockSettings";
 import DomainBlocker from "./DomainBlocker";
 import ContentFilterList from "./ContentFilterList";
 import ImportExportControls from "./ImportExportControls";
+import ShortsToggle from "./ShortsToggle";
 
 export default function BlockTab() {
   const {
@@ -15,11 +16,13 @@ export default function BlockTab() {
     requestRemoveFilter,
     cancelRemoveFilter,
     importSettings,
+    setBlockYoutubeShorts,
   } = useBlockSettings();
 
   return (
     <div className="flex flex-col">
       <ImportExportControls blockSettings={blockSettings} onImport={importSettings} />
+      <ShortsToggle enabled={blockSettings.blockYoutubeShorts} onChange={setBlockYoutubeShorts} />
       <DomainBlocker
         domains={blockSettings.blockedDomains}
         onAdd={addDomain}

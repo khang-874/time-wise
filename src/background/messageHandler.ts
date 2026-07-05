@@ -18,6 +18,7 @@ import {
   removeContentFilter,
   requestRemoveBlockedDomain,
   requestRemoveContentFilter,
+  setBlockYoutubeShorts,
 } from "./blockManager";
 import {
   startTimer,
@@ -136,6 +137,10 @@ async function handleMessage(request: PopupRequest): Promise<PopupResponse> {
     }
     case "IMPORT_BLOCK_SETTINGS": {
       const blockSettings = await importBlockSettings(request.payload);
+      return { type: "BLOCK_SETTINGS", payload: blockSettings };
+    }
+    case "SET_BLOCK_YOUTUBE_SHORTS": {
+      const blockSettings = await setBlockYoutubeShorts(request.payload.enabled);
       return { type: "BLOCK_SETTINGS", payload: blockSettings };
     }
   }

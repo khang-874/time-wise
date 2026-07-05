@@ -2,6 +2,7 @@ import type { BlockSettings, ContentFilter } from "../shared/types";
 import { shouldHideYoutubeItem, shouldHideGenericPage } from "../shared/blockUtils";
 
 let currentFilters: ContentFilter[] = [];
+let blockShorts = false;
 let observer: MutationObserver | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -18,6 +19,10 @@ function redirectToBlockedPage(reason: string): void {
   url.searchParams.set("title", "Content blocked");
   url.searchParams.set("reason", reason);
   window.location.replace(url.toString());
+}
+
+function isShortsPath(pathname: string): boolean {
+  return pathname.startsWith("/shorts/");
 }
 
 /**
@@ -84,14 +89,15 @@ function getYoutubeWatchPageText(): string {
   return parts.join(" ");
 }
 
+const SHORTS_CARD_SELECTOR = "ytd-reel-item-renderer, ytd-shorts-lockup-view-model";
+
 function filterYoutubeFeeds(root: Element | Document = document): void {
   // Individual video/short/channel cards
   const cardSelectors = [
     "ytd-rich-item-renderer",       // home feed videos
     "ytd-video-renderer",           // search result videos
     "ytd-compact-video-renderer",   // sidebar videos
-    "ytd-reel-item-renderer",       // shorts in shelf
-    "ytd-shorts-lockup-view-model", // newer shorts card format
+    SHORTS_CARD_SELECTOR,           // shorts in shelf (both card formats)
     "ytd-channel-renderer",         // channel cards in search results
   ].join(",");
 
@@ -101,9 +107,16 @@ function filterYoutubeFeeds(root: Element | Document = document): void {
     }
   });
 
+  // Shorts are blocked outright (not gated on a keyword match) once the toggle is on
+  if (blockShorts) {
+    root.querySelectorAll<HTMLElement>(SHORTS_CARD_SELECTOR).forEach((item) => {
+      item.style.display = "none";
+    });
+  }
+
   // After hiding individual shorts, collapse the entire shelf if every item inside is hidden
   root.querySelectorAll<HTMLElement>("ytd-reel-shelf-renderer, ytd-shorts-shelf-renderer").forEach((shelf) => {
-    const items = shelf.querySelectorAll<HTMLElement>("ytd-reel-item-renderer, ytd-shorts-lockup-view-model");
+    const items = shelf.querySelectorAll<HTMLElement>(SHORTS_CARD_SELECTOR);
     if (items.length > 0 && Array.from(items).every((el) => el.style.display === "none")) {
       (shelf.closest("ytd-rich-section-renderer") as HTMLElement | null ?? shelf).style.display = "none";
     }
@@ -128,11 +141,19 @@ function checkYoutubeCurrentVideo(): void {
   }
 }
 
+function checkYoutubeCurrentPage(): void {
+  if (blockShorts && isShortsPath(window.location.pathname)) {
+    redirectToBlockedPage("YouTube Shorts are blocked.");
+    return;
+  }
+  checkYoutubeCurrentVideo();
+}
+
 function runFilters(): void {
   const platform = getPlatform();
   if (platform === "youtube") {
     filterYoutubeFeeds();
-    checkYoutubeCurrentVideo();
+    checkYoutubeCurrentPage();
   } else if (shouldHideGenericPage(document.title, currentFilters)) {
     redirectToBlockedPage("This page matches your content filter.");
   }
@@ -149,12 +170,13 @@ function setupObserver(): void {
 }
 
 // YouTube fires this on every SPA navigation
-document.addEventListener("yt-navigate-finish", checkYoutubeCurrentVideo);
+document.addEventListener("yt-navigate-finish", checkYoutubeCurrentPage);
 
 // Bootstrap
 chrome.storage.local.get("blockSettings").then((result) => {
   const settings = result["blockSettings"] as BlockSettings | undefined;
   currentFilters = settings?.contentFilters ?? [];
+  blockShorts = settings?.blockYoutubeShorts ?? false;
   runFilters();
   setupObserver();
 });
@@ -163,5 +185,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes["blockSettings"]) return;
   const updated = changes["blockSettings"].newValue as BlockSettings | undefined;
   currentFilters = updated?.contentFilters ?? [];
+  blockShorts = updated?.blockYoutubeShorts ?? false;
   runFilters();
 });
