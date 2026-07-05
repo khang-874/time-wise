@@ -22,6 +22,16 @@ export function useBlockSettings() {
     if (resp.type === "BLOCK_SETTINGS") setBlockSettings(resp.payload);
   };
 
+  const requestRemoveDomain = async (hostname: string) => {
+    const resp = await sendMessage({ type: "REQUEST_REMOVE_BLOCKED_DOMAIN", payload: { hostname } });
+    if (resp.type === "BLOCK_SETTINGS") setBlockSettings(resp.payload);
+  };
+
+  const cancelRemoveDomain = async (hostname: string) => {
+    const resp = await sendMessage({ type: "CANCEL_REMOVE_BLOCKED_DOMAIN", payload: { hostname } });
+    if (resp.type === "BLOCK_SETTINGS") setBlockSettings(resp.payload);
+  };
+
   const addFilter = async (platform: ContentFilterPlatform, keyword: string) => {
     const resp = await sendMessage({
       type: "ADD_CONTENT_FILTER",
@@ -35,5 +45,34 @@ export function useBlockSettings() {
     if (resp.type === "BLOCK_SETTINGS") setBlockSettings(resp.payload);
   };
 
-  return { blockSettings, addDomain, removeDomain, addFilter, removeFilter };
+  const requestRemoveFilter = async (id: string) => {
+    const resp = await sendMessage({ type: "REQUEST_REMOVE_CONTENT_FILTER", payload: { id } });
+    if (resp.type === "BLOCK_SETTINGS") setBlockSettings(resp.payload);
+  };
+
+  const cancelRemoveFilter = async (id: string) => {
+    const resp = await sendMessage({ type: "CANCEL_REMOVE_CONTENT_FILTER", payload: { id } });
+    if (resp.type === "BLOCK_SETTINGS") setBlockSettings(resp.payload);
+  };
+
+  const importSettings = async (payload: {
+    blockedDomains?: { hostname: string }[];
+    contentFilters?: { platform: ContentFilterPlatform; keyword: string }[];
+  }) => {
+    const resp = await sendMessage({ type: "IMPORT_BLOCK_SETTINGS", payload });
+    if (resp.type === "BLOCK_SETTINGS") setBlockSettings(resp.payload);
+  };
+
+  return {
+    blockSettings,
+    addDomain,
+    removeDomain,
+    requestRemoveDomain,
+    cancelRemoveDomain,
+    addFilter,
+    removeFilter,
+    requestRemoveFilter,
+    cancelRemoveFilter,
+    importSettings,
+  };
 }

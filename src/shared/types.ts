@@ -110,6 +110,8 @@ export interface BlockedDomain {
   ruleId: number;
   /** Epoch ms when the domain was added. */
   addedAt: number;
+  /** Epoch ms when removal was requested; `null` when no removal is pending. Enforces {@link REMOVAL_DELAY_MS} before removal is confirmed. */
+  removalRequestedAt: number | null;
 }
 
 /** A single keyword/hashtag filter for hiding content in feeds and blocking direct navigation. */
@@ -121,6 +123,8 @@ export interface ContentFilter {
   keyword: string;
   /** Epoch ms when this filter was added. */
   addedAt: number;
+  /** Epoch ms when removal was requested; `null` when no removal is pending. Enforces {@link REMOVAL_DELAY_MS} before removal is confirmed. */
+  removalRequestedAt: number | null;
 }
 
 /** Persisted block feature configuration. */
@@ -148,8 +152,19 @@ export type PopupRequest =
   | { type: "GET_BLOCK_SETTINGS" }
   | { type: "ADD_BLOCKED_DOMAIN"; payload: { hostname: string } }
   | { type: "REMOVE_BLOCKED_DOMAIN"; payload: { hostname: string } }
+  | { type: "REQUEST_REMOVE_BLOCKED_DOMAIN"; payload: { hostname: string } }
+  | { type: "CANCEL_REMOVE_BLOCKED_DOMAIN"; payload: { hostname: string } }
   | { type: "ADD_CONTENT_FILTER"; payload: { platform: ContentFilterPlatform; keyword: string } }
-  | { type: "REMOVE_CONTENT_FILTER"; payload: { id: string } };
+  | { type: "REMOVE_CONTENT_FILTER"; payload: { id: string } }
+  | { type: "REQUEST_REMOVE_CONTENT_FILTER"; payload: { id: string } }
+  | { type: "CANCEL_REMOVE_CONTENT_FILTER"; payload: { id: string } }
+  | {
+      type: "IMPORT_BLOCK_SETTINGS";
+      payload: {
+        blockedDomains?: { hostname: string }[];
+        contentFilters?: { platform: ContentFilterPlatform; keyword: string }[];
+      };
+    };
 
 /** Typed responses returned by the background service worker to the popup. */
 export type PopupResponse =

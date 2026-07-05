@@ -7,9 +7,9 @@ import {
 } from "../../shared/blockUtils";
 import type { ContentFilter } from "../../shared/types";
 
-const ytFilter: ContentFilter = { id: "1", platform: "youtube", keyword: "crypto", addedAt: 0 };
-const rdFilter: ContentFilter = { id: "2", platform: "reddit", keyword: "wallstreetbets", addedAt: 0 };
-const gnFilter: ContentFilter = { id: "3", platform: "generic", keyword: "casino", addedAt: 0 };
+const ytFilter: ContentFilter = { id: "1", platform: "youtube", keyword: "crypto", addedAt: 0, removalRequestedAt: null };
+const rdFilter: ContentFilter = { id: "2", platform: "reddit", keyword: "wallstreetbets", addedAt: 0, removalRequestedAt: null };
+const gnFilter: ContentFilter = { id: "3", platform: "generic", keyword: "casino", addedAt: 0, removalRequestedAt: null };
 
 describe("matchesKeyword", () => {
   it("matches case-insensitively", () => expect(matchesKeyword("CRYPTO News", "crypto")).toBe(true));

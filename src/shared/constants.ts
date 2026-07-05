@@ -13,6 +13,9 @@ export const STORAGE_KEY_BLOCK_SETTINGS = "blockSettings";
 
 export const IDLE_THRESHOLD_SECONDS = 60;
 
+/** Minimum wait after requesting removal of a blocked domain or content filter before it can be confirmed. */
+export const REMOVAL_DELAY_MS = 60_000;
+
 export const DEFAULT_SETTINGS: PomodoroSettings = {
   workMinutes: 25,
   shortBreakMinutes: 5,

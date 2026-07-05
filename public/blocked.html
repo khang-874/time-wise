@@ -32,9 +32,16 @@
 <body>
   <div class="card">
     <div style="font-size:56px;margin-bottom:16px">🚫</div>
-    <h1>Site blocked</h1>
-    <p>You've blocked this domain in TimeWise.</p>
+    <h1 id="title">Site blocked</h1>
+    <p id="reason">You've blocked this domain in TimeWise.</p>
     <button onclick="history.back()">Go back</button>
   </div>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const title = params.get("title");
+    const reason = params.get("reason");
+    if (title) document.getElementById("title").textContent = title;
+    if (reason) document.getElementById("reason").textContent = reason;
+  </script>
 </body>
 </html>

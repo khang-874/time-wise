@@ -1,4 +1,5 @@
 import { getBlockSettings, setBlockSettings } from "../shared/storage";
+import { REMOVAL_DELAY_MS } from "../shared/constants";
 import type { BlockedDomain, BlockSettings, ContentFilter, ContentFilterPlatform } from "../shared/types";
 
 function buildDnrRule(domain: BlockedDomain): chrome.declarativeNetRequest.Rule {
@@ -49,7 +50,7 @@ export async function addBlockedDomain(hostname: string): Promise<BlockSettings>
       ? Math.max(...settings.blockedDomains.map((d) => d.ruleId)) + 1
       : 1;
 
-  const domain: BlockedDomain = { hostname, ruleId, addedAt: Date.now() };
+  const domain: BlockedDomain = { hostname, ruleId, addedAt: Date.now(), removalRequestedAt: null };
   await chrome.declarativeNetRequest.updateDynamicRules({
     addRules: [buildDnrRule(domain)],
     removeRuleIds: [],
@@ -63,11 +64,50 @@ export async function addBlockedDomain(hostname: string): Promise<BlockSettings>
   return updated;
 }
 
-/** Removes a domain from the blocklist. No-op if not found. Returns updated settings. */
+/** Marks a domain as pending removal, starting the {@link REMOVAL_DELAY_MS} wait. No-op if not found. */
+export async function requestRemoveBlockedDomain(hostname: string): Promise<BlockSettings> {
+  const settings = await getBlockSettings();
+  const target = settings.blockedDomains.find((d) => d.hostname === hostname);
+  if (!target) return settings;
+
+  const updated: BlockSettings = {
+    ...settings,
+    blockedDomains: settings.blockedDomains.map((d) =>
+      d.hostname === hostname ? { ...d, removalRequestedAt: Date.now() } : d
+    ),
+  };
+  await setBlockSettings(updated);
+  return updated;
+}
+
+/** Clears a pending removal request for a domain. No-op if not found. */
+export async function cancelRemoveBlockedDomain(hostname: string): Promise<BlockSettings> {
+  const settings = await getBlockSettings();
+  const target = settings.blockedDomains.find((d) => d.hostname === hostname);
+  if (!target) return settings;
+
+  const updated: BlockSettings = {
+    ...settings,
+    blockedDomains: settings.blockedDomains.map((d) =>
+      d.hostname === hostname ? { ...d, removalRequestedAt: null } : d
+    ),
+  };
+  await setBlockSettings(updated);
+  return updated;
+}
+
+/**
+ * Removes a domain from the blocklist. No-op if not found, or if removal was never requested,
+ * or if {@link REMOVAL_DELAY_MS} hasn't elapsed since the removal was requested — this friction
+ * is intentional so a domain can't be unblocked on impulse.
+ */
 export async function removeBlockedDomain(hostname: string): Promise<BlockSettings> {
   const settings = await getBlockSettings();
   const target = settings.blockedDomains.find((d) => d.hostname === hostname);
   if (!target) return settings;
+  if (!target.removalRequestedAt || Date.now() - target.removalRequestedAt < REMOVAL_DELAY_MS) {
+    return settings;
+  }
 
   await chrome.declarativeNetRequest.updateDynamicRules({
     addRules: [],
@@ -93,6 +133,7 @@ export async function addContentFilter(
     platform,
     keyword: keyword.trim(),
     addedAt: Date.now(),
+    removalRequestedAt: null,
   };
   const updated: BlockSettings = {
     ...settings,
@@ -102,13 +143,75 @@ export async function addContentFilter(
   return updated;
 }
 
-/** Removes a content filter by id. Returns updated settings. */
+/** Marks a content filter as pending removal, starting the {@link REMOVAL_DELAY_MS} wait. No-op if not found. */
+export async function requestRemoveContentFilter(id: string): Promise<BlockSettings> {
+  const settings = await getBlockSettings();
+  const updated: BlockSettings = {
+    ...settings,
+    contentFilters: settings.contentFilters.map((f) =>
+      f.id === id ? { ...f, removalRequestedAt: Date.now() } : f
+    ),
+  };
+  await setBlockSettings(updated);
+  return updated;
+}
+
+/** Clears a pending removal request for a content filter. No-op if not found. */
+export async function cancelRemoveContentFilter(id: string): Promise<BlockSettings> {
+  const settings = await getBlockSettings();
+  const updated: BlockSettings = {
+    ...settings,
+    contentFilters: settings.contentFilters.map((f) =>
+      f.id === id ? { ...f, removalRequestedAt: null } : f
+    ),
+  };
+  await setBlockSettings(updated);
+  return updated;
+}
+
+/**
+ * Removes a content filter by id. No-op if not found, or if removal was never requested,
+ * or if {@link REMOVAL_DELAY_MS} hasn't elapsed since the removal was requested.
+ */
 export async function removeContentFilter(id: string): Promise<BlockSettings> {
   const settings = await getBlockSettings();
+  const target = settings.contentFilters.find((f) => f.id === id);
+  if (!target) return settings;
+  if (!target.removalRequestedAt || Date.now() - target.removalRequestedAt < REMOVAL_DELAY_MS) {
+    return settings;
+  }
+
   const updated: BlockSettings = {
     ...settings,
     contentFilters: settings.contentFilters.filter((f) => f.id !== id),
   };
   await setBlockSettings(updated);
   return updated;
+}
+
+/**
+ * Merges an imported block list into the current settings. Duplicates (by hostname, or by
+ * platform+keyword for filters) are skipped rather than replacing existing entries, so importing
+ * a shared list never wipes out what's already configured.
+ */
+export async function importBlockSettings(imported: {
+  blockedDomains?: { hostname: string }[];
+  contentFilters?: { platform: ContentFilterPlatform; keyword: string }[];
+}): Promise<BlockSettings> {
+  for (const d of imported.blockedDomains ?? []) {
+    const hostname = d?.hostname?.trim().toLowerCase();
+    if (hostname) await addBlockedDomain(hostname);
+  }
+
+  let settings = await getBlockSettings();
+  for (const f of imported.contentFilters ?? []) {
+    const keyword = f?.keyword?.trim();
+    if (!keyword) continue;
+    const exists = settings.contentFilters.some(
+      (existing) => existing.platform === f.platform && existing.keyword.toLowerCase() === keyword.toLowerCase()
+    );
+    if (exists) continue;
+    settings = await addContentFilter(f.platform, keyword);
+  }
+  return settings;
 }

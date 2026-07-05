@@ -1,17 +1,20 @@
 import { useState } from "react";
 import type { BlockedDomain } from "../../../shared/types";
+import RemoveWithDelay from "./RemoveWithDelay";
 
 interface Props {
   domains: BlockedDomain[];
   onAdd: (hostname: string) => Promise<void>;
   onRemove: (hostname: string) => Promise<void>;
+  onRequestRemove: (hostname: string) => Promise<void>;
+  onCancelRemove: (hostname: string) => Promise<void>;
 }
 
 function isValidHostname(h: string): boolean {
   return /^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/.test(h.trim());
 }
 
-export default function DomainBlocker({ domains, onAdd, onRemove }: Props) {
+export default function DomainBlocker({ domains, onAdd, onRemove, onRequestRemove, onCancelRemove }: Props) {
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
 
@@ -55,13 +58,14 @@ export default function DomainBlocker({ domains, onAdd, onRemove }: Props) {
         {domains.map((d) => (
           <li key={d.hostname} className="flex items-center justify-between py-1">
             <span className="text-sm text-gray-700 truncate">{d.hostname}</span>
-            <button
-              onClick={() => onRemove(d.hostname)}
-              aria-label={`Unblock ${d.hostname}`}
-              className="text-xs text-gray-400 hover:text-red-500 ml-2 shrink-0"
-            >
-              Remove
-            </button>
+            <RemoveWithDelay
+              removalRequestedAt={d.removalRequestedAt}
+              onRequest={() => onRequestRemove(d.hostname)}
+              onCancel={() => onCancelRemove(d.hostname)}
+              onConfirm={() => onRemove(d.hostname)}
+              label={d.hostname}
+              actionVerb="Unblock"
+            />
           </li>
         ))}
       </ul>

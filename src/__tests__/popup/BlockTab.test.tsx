@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import BlockTab from "../../popup/components/block/BlockTab";
-import { DEFAULT_BLOCK_SETTINGS } from "../../shared/constants";
+import { DEFAULT_BLOCK_SETTINGS, REMOVAL_DELAY_MS } from "../../shared/constants";
 import type { BlockSettings } from "../../shared/types";
 
 const mockSendMessage = chrome.runtime.sendMessage as ReturnType<typeof vi.fn>;
@@ -31,7 +31,7 @@ describe("BlockTab", () => {
     mockSendMessage.mockResolvedValueOnce({
       type: "BLOCK_SETTINGS",
       payload: makeSettings({
-        blockedDomains: [{ hostname: "facebook.com", ruleId: 1, addedAt: 0 }],
+        blockedDomains: [{ hostname: "facebook.com", ruleId: 1, addedAt: 0, removalRequestedAt: null }],
       }),
     });
     render(<BlockTab />);
@@ -42,7 +42,7 @@ describe("BlockTab", () => {
     mockSendMessage.mockResolvedValueOnce({
       type: "BLOCK_SETTINGS",
       payload: makeSettings({
-        contentFilters: [{ id: "1", platform: "youtube", keyword: "crypto", addedAt: 0 }],
+        contentFilters: [{ id: "1", platform: "youtube", keyword: "crypto", addedAt: 0, removalRequestedAt: null }],
       }),
     });
     render(<BlockTab />);
@@ -101,12 +101,25 @@ describe("BlockTab", () => {
       );
     });
 
-    it("sends REMOVE_BLOCKED_DOMAIN when Remove is clicked", async () => {
+    it("requests removal when Unblock is clicked, then confirms once the delay has elapsed", async () => {
       mockSendMessage
         .mockResolvedValueOnce({
           type: "BLOCK_SETTINGS",
           payload: makeSettings({
-            blockedDomains: [{ hostname: "facebook.com", ruleId: 1, addedAt: 0 }],
+            blockedDomains: [{ hostname: "facebook.com", ruleId: 1, addedAt: 0, removalRequestedAt: null }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          type: "BLOCK_SETTINGS",
+          payload: makeSettings({
+            blockedDomains: [
+              {
+                hostname: "facebook.com",
+                ruleId: 1,
+                addedAt: 0,
+                removalRequestedAt: Date.now() - REMOVAL_DELAY_MS - 1000,
+              },
+            ],
           }),
         })
         .mockResolvedValueOnce({ type: "BLOCK_SETTINGS", payload: makeSettings() });
@@ -115,10 +128,40 @@ describe("BlockTab", () => {
       fireEvent.click(screen.getByLabelText("Unblock facebook.com"));
       await waitFor(() =>
         expect(mockSendMessage).toHaveBeenCalledWith({
+          type: "REQUEST_REMOVE_BLOCKED_DOMAIN",
+          payload: { hostname: "facebook.com" },
+        })
+      );
+      await waitFor(() => screen.getByLabelText("Confirm remove facebook.com"));
+      fireEvent.click(screen.getByLabelText("Confirm remove facebook.com"));
+      await waitFor(() =>
+        expect(mockSendMessage).toHaveBeenCalledWith({
           type: "REMOVE_BLOCKED_DOMAIN",
           payload: { hostname: "facebook.com" },
         })
       );
+    });
+
+    it("shows a countdown and Cancel while the removal delay is still pending", async () => {
+      mockSendMessage
+        .mockResolvedValueOnce({
+          type: "BLOCK_SETTINGS",
+          payload: makeSettings({
+            blockedDomains: [{ hostname: "facebook.com", ruleId: 1, addedAt: 0, removalRequestedAt: null }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          type: "BLOCK_SETTINGS",
+          payload: makeSettings({
+            blockedDomains: [{ hostname: "facebook.com", ruleId: 1, addedAt: 0, removalRequestedAt: Date.now() }],
+          }),
+        });
+      render(<BlockTab />);
+      await waitFor(() => screen.getByLabelText("Unblock facebook.com"));
+      fireEvent.click(screen.getByLabelText("Unblock facebook.com"));
+      await waitFor(() => screen.getByLabelText("Cancel removing facebook.com"));
+      expect(screen.getByText(/Removing available in/)).toBeInTheDocument();
+      expect(screen.queryByLabelText("Confirm remove facebook.com")).not.toBeInTheDocument();
     });
   });
 
@@ -150,18 +193,40 @@ describe("BlockTab", () => {
       );
     });
 
-    it("sends REMOVE_CONTENT_FILTER when Remove is clicked", async () => {
+    it("requests removal when Remove is clicked, then confirms once the delay has elapsed", async () => {
       mockSendMessage
         .mockResolvedValueOnce({
           type: "BLOCK_SETTINGS",
           payload: makeSettings({
-            contentFilters: [{ id: "filter-1", platform: "youtube", keyword: "crypto", addedAt: 0 }],
+            contentFilters: [{ id: "filter-1", platform: "youtube", keyword: "crypto", addedAt: 0, removalRequestedAt: null }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          type: "BLOCK_SETTINGS",
+          payload: makeSettings({
+            contentFilters: [
+              {
+                id: "filter-1",
+                platform: "youtube",
+                keyword: "crypto",
+                addedAt: 0,
+                removalRequestedAt: Date.now() - REMOVAL_DELAY_MS - 1000,
+              },
+            ],
           }),
         })
         .mockResolvedValueOnce({ type: "BLOCK_SETTINGS", payload: makeSettings() });
       render(<BlockTab />);
       await waitFor(() => screen.getByLabelText("Remove filter crypto"));
       fireEvent.click(screen.getByLabelText("Remove filter crypto"));
+      await waitFor(() =>
+        expect(mockSendMessage).toHaveBeenCalledWith({
+          type: "REQUEST_REMOVE_CONTENT_FILTER",
+          payload: { id: "filter-1" },
+        })
+      );
+      await waitFor(() => screen.getByLabelText("Confirm remove filter crypto"));
+      fireEvent.click(screen.getByLabelText("Confirm remove filter crypto"));
       await waitFor(() =>
         expect(mockSendMessage).toHaveBeenCalledWith({
           type: "REMOVE_CONTENT_FILTER",

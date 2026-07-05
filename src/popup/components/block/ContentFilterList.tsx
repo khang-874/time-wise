@@ -1,10 +1,13 @@
 import { useState } from "react";
 import type { ContentFilter, ContentFilterPlatform } from "../../../shared/types";
+import RemoveWithDelay from "./RemoveWithDelay";
 
 interface Props {
   filters: ContentFilter[];
   onAdd: (platform: ContentFilterPlatform, keyword: string) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
+  onRequestRemove: (id: string) => Promise<void>;
+  onCancelRemove: (id: string) => Promise<void>;
 }
 
 const PLATFORMS: { value: ContentFilterPlatform; label: string }[] = [
@@ -13,7 +16,7 @@ const PLATFORMS: { value: ContentFilterPlatform; label: string }[] = [
   { value: "generic", label: "Any site" },
 ];
 
-export default function ContentFilterList({ filters, onAdd, onRemove }: Props) {
+export default function ContentFilterList({ filters, onAdd, onRemove, onRequestRemove, onCancelRemove }: Props) {
   const [platform, setPlatform] = useState<ContentFilterPlatform>("youtube");
   const [keyword, setKeyword] = useState("");
   const [error, setError] = useState("");
@@ -75,13 +78,13 @@ export default function ContentFilterList({ filters, onAdd, onRemove }: Props) {
               <span className="text-gray-400 mr-1">{platformLabel(f.platform)}:</span>
               {f.keyword}
             </span>
-            <button
-              onClick={() => onRemove(f.id)}
-              aria-label={`Remove filter ${f.keyword}`}
-              className="text-xs text-gray-400 hover:text-red-500 ml-2 shrink-0"
-            >
-              Remove
-            </button>
+            <RemoveWithDelay
+              removalRequestedAt={f.removalRequestedAt}
+              onRequest={() => onRequestRemove(f.id)}
+              onCancel={() => onCancelRemove(f.id)}
+              onConfirm={() => onRemove(f.id)}
+              label={`filter ${f.keyword}`}
+            />
           </li>
         ))}
       </ul>

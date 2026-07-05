@@ -2,11 +2,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   addBlockedDomain,
   removeBlockedDomain,
+  requestRemoveBlockedDomain,
+  cancelRemoveBlockedDomain,
   addContentFilter,
   removeContentFilter,
+  requestRemoveContentFilter,
+  cancelRemoveContentFilter,
+  importBlockSettings,
   syncDnrRulesOnStartup,
 } from "../../background/blockManager";
-import { DEFAULT_BLOCK_SETTINGS } from "../../shared/constants";
+import { DEFAULT_BLOCK_SETTINGS, REMOVAL_DELAY_MS } from "../../shared/constants";
 
 const mockGet = chrome.storage.local.get as ReturnType<typeof vi.fn>;
 const mockSet = chrome.storage.local.set as ReturnType<typeof vi.fn>;
@@ -76,27 +81,97 @@ describe("addBlockedDomain", () => {
   });
 });
 
-describe("removeBlockedDomain", () => {
+describe("requestRemoveBlockedDomain / cancelRemoveBlockedDomain", () => {
   beforeEach(() => {
     mockGet.mockResolvedValue({
       blockSettings: {
         ...DEFAULT_BLOCK_SETTINGS,
-        blockedDomains: [{ hostname: "facebook.com", ruleId: 1, addedAt: 0 }],
+        blockedDomains: [{ hostname: "facebook.com", ruleId: 1, addedAt: 0, removalRequestedAt: null }],
       },
     });
   });
 
-  it("removes domain from settings", async () => {
+  it("stamps removalRequestedAt on request", async () => {
+    const updated = await requestRemoveBlockedDomain("facebook.com");
+    expect(updated.blockedDomains[0].removalRequestedAt).toEqual(expect.any(Number));
+  });
+
+  it("is no-op when domain not found", async () => {
+    const updated = await requestRemoveBlockedDomain("notblocked.com");
+    expect(updated.blockedDomains[0].removalRequestedAt).toBeNull();
+  });
+
+  it("clears removalRequestedAt on cancel", async () => {
+    mockGet.mockResolvedValue({
+      blockSettings: {
+        ...DEFAULT_BLOCK_SETTINGS,
+        blockedDomains: [{ hostname: "facebook.com", ruleId: 1, addedAt: 0, removalRequestedAt: Date.now() }],
+      },
+    });
+    const updated = await cancelRemoveBlockedDomain("facebook.com");
+    expect(updated.blockedDomains[0].removalRequestedAt).toBeNull();
+  });
+});
+
+describe("removeBlockedDomain", () => {
+  it("is no-op when removal was never requested", async () => {
+    mockGet.mockResolvedValue({
+      blockSettings: {
+        ...DEFAULT_BLOCK_SETTINGS,
+        blockedDomains: [{ hostname: "facebook.com", ruleId: 1, addedAt: 0, removalRequestedAt: null }],
+      },
+    });
+    const updated = await removeBlockedDomain("facebook.com");
+    expect(updated.blockedDomains).toHaveLength(1);
+    expect(mockUpdateDnr).not.toHaveBeenCalled();
+    expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it("is no-op when the delay hasn't elapsed yet", async () => {
+    mockGet.mockResolvedValue({
+      blockSettings: {
+        ...DEFAULT_BLOCK_SETTINGS,
+        blockedDomains: [{ hostname: "facebook.com", ruleId: 1, addedAt: 0, removalRequestedAt: Date.now() }],
+      },
+    });
+    const updated = await removeBlockedDomain("facebook.com");
+    expect(updated.blockedDomains).toHaveLength(1);
+    expect(mockUpdateDnr).not.toHaveBeenCalled();
+  });
+
+  it("removes domain from settings once the delay has elapsed", async () => {
+    mockGet.mockResolvedValue({
+      blockSettings: {
+        ...DEFAULT_BLOCK_SETTINGS,
+        blockedDomains: [
+          { hostname: "facebook.com", ruleId: 1, addedAt: 0, removalRequestedAt: Date.now() - REMOVAL_DELAY_MS - 1000 },
+        ],
+      },
+    });
     const updated = await removeBlockedDomain("facebook.com");
     expect(updated.blockedDomains).toHaveLength(0);
   });
 
-  it("calls updateDynamicRules with correct removeRuleIds", async () => {
+  it("calls updateDynamicRules with correct removeRuleIds once the delay has elapsed", async () => {
+    mockGet.mockResolvedValue({
+      blockSettings: {
+        ...DEFAULT_BLOCK_SETTINGS,
+        blockedDomains: [
+          { hostname: "facebook.com", ruleId: 1, addedAt: 0, removalRequestedAt: Date.now() - REMOVAL_DELAY_MS - 1000 },
+        ],
+      },
+    });
     await removeBlockedDomain("facebook.com");
     expect(mockUpdateDnr).toHaveBeenCalledWith({ addRules: [], removeRuleIds: [1] });
   });
 
   it("is no-op when domain not found", async () => {
+    mockGet.mockResolvedValue({
+      blockSettings: {
+        ...DEFAULT_BLOCK_SETTINGS,
+        blockedDomains: [{ hostname: "facebook.com", ruleId: 1, addedAt: 0, removalRequestedAt: null }],
+      },
+    });
     const updated = await removeBlockedDomain("notblocked.com");
     expect(updated.blockedDomains).toHaveLength(1);
     expect(mockUpdateDnr).not.toHaveBeenCalled();
@@ -127,26 +202,133 @@ describe("addContentFilter", () => {
   });
 });
 
-describe("removeContentFilter", () => {
+describe("requestRemoveContentFilter / cancelRemoveContentFilter", () => {
   const FILTER_ID = "test-uuid-1234";
 
   beforeEach(() => {
     mockGet.mockResolvedValue({
       blockSettings: {
         ...DEFAULT_BLOCK_SETTINGS,
-        contentFilters: [{ id: FILTER_ID, platform: "youtube", keyword: "test", addedAt: 0 }],
+        contentFilters: [{ id: FILTER_ID, platform: "youtube", keyword: "test", addedAt: 0, removalRequestedAt: null }],
       },
     });
   });
 
-  it("removes filter by id", async () => {
+  it("stamps removalRequestedAt on request", async () => {
+    const updated = await requestRemoveContentFilter(FILTER_ID);
+    expect(updated.contentFilters[0].removalRequestedAt).toEqual(expect.any(Number));
+  });
+
+  it("clears removalRequestedAt on cancel", async () => {
+    mockGet.mockResolvedValue({
+      blockSettings: {
+        ...DEFAULT_BLOCK_SETTINGS,
+        contentFilters: [{ id: FILTER_ID, platform: "youtube", keyword: "test", addedAt: 0, removalRequestedAt: Date.now() }],
+      },
+    });
+    const updated = await cancelRemoveContentFilter(FILTER_ID);
+    expect(updated.contentFilters[0].removalRequestedAt).toBeNull();
+  });
+});
+
+describe("removeContentFilter", () => {
+  const FILTER_ID = "test-uuid-1234";
+
+  it("is no-op when removal was never requested", async () => {
+    mockGet.mockResolvedValue({
+      blockSettings: {
+        ...DEFAULT_BLOCK_SETTINGS,
+        contentFilters: [{ id: FILTER_ID, platform: "youtube", keyword: "test", addedAt: 0, removalRequestedAt: null }],
+      },
+    });
+    const updated = await removeContentFilter(FILTER_ID);
+    expect(updated.contentFilters).toHaveLength(1);
+  });
+
+  it("is no-op when the delay hasn't elapsed yet", async () => {
+    mockGet.mockResolvedValue({
+      blockSettings: {
+        ...DEFAULT_BLOCK_SETTINGS,
+        contentFilters: [{ id: FILTER_ID, platform: "youtube", keyword: "test", addedAt: 0, removalRequestedAt: Date.now() }],
+      },
+    });
+    const updated = await removeContentFilter(FILTER_ID);
+    expect(updated.contentFilters).toHaveLength(1);
+  });
+
+  it("removes filter by id once the delay has elapsed", async () => {
+    mockGet.mockResolvedValue({
+      blockSettings: {
+        ...DEFAULT_BLOCK_SETTINGS,
+        contentFilters: [
+          { id: FILTER_ID, platform: "youtube", keyword: "test", addedAt: 0, removalRequestedAt: Date.now() - REMOVAL_DELAY_MS - 1000 },
+        ],
+      },
+    });
     const updated = await removeContentFilter(FILTER_ID);
     expect(updated.contentFilters).toHaveLength(0);
   });
 
   it("is no-op for unknown id", async () => {
+    mockGet.mockResolvedValue({
+      blockSettings: {
+        ...DEFAULT_BLOCK_SETTINGS,
+        contentFilters: [{ id: FILTER_ID, platform: "youtube", keyword: "test", addedAt: 0, removalRequestedAt: null }],
+      },
+    });
     const updated = await removeContentFilter("unknown-id");
     expect(updated.contentFilters).toHaveLength(1);
+  });
+});
+
+describe("importBlockSettings", () => {
+  /**
+   * importBlockSettings does several sequential get→set round trips internally, so it needs a
+   * mock that actually persists between calls (unlike the static mockResolvedValue used elsewhere).
+   */
+  function useStatefulStorage(initial: Partial<typeof DEFAULT_BLOCK_SETTINGS> = {}) {
+    let stored = { ...DEFAULT_BLOCK_SETTINGS, ...initial };
+    mockGet.mockImplementation(async () => ({ blockSettings: stored }));
+    mockSet.mockImplementation(async (obj: Record<string, unknown>) => {
+      stored = obj["blockSettings"] as typeof stored;
+    });
+  }
+
+  it("adds new domains and filters", async () => {
+    useStatefulStorage();
+    const updated = await importBlockSettings({
+      blockedDomains: [{ hostname: "facebook.com" }],
+      contentFilters: [{ platform: "youtube", keyword: "crypto" }],
+    });
+    expect(updated.blockedDomains.map((d) => d.hostname)).toEqual(["facebook.com"]);
+    expect(updated.contentFilters).toMatchObject([{ platform: "youtube", keyword: "crypto" }]);
+  });
+
+  it("skips domains already present", async () => {
+    useStatefulStorage({
+      blockedDomains: [{ hostname: "facebook.com", ruleId: 1, addedAt: 0, removalRequestedAt: null }],
+    });
+    const updated = await importBlockSettings({ blockedDomains: [{ hostname: "facebook.com" }] });
+    expect(updated.blockedDomains).toHaveLength(1);
+  });
+
+  it("skips filters that already exist for the same platform+keyword", async () => {
+    useStatefulStorage({
+      contentFilters: [{ id: "1", platform: "youtube", keyword: "crypto", addedAt: 0, removalRequestedAt: null }],
+    });
+    const updated = await importBlockSettings({ contentFilters: [{ platform: "youtube", keyword: "Crypto" }] });
+    expect(updated.contentFilters).toHaveLength(1);
+  });
+
+  it("skips malformed entries", async () => {
+    useStatefulStorage();
+    const updated = await importBlockSettings({
+      // @ts-expect-error deliberately malformed input
+      blockedDomains: [{ hostname: "" }, {}],
+      contentFilters: [{ platform: "youtube", keyword: "" }],
+    });
+    expect(updated.blockedDomains).toHaveLength(0);
+    expect(updated.contentFilters).toHaveLength(0);
   });
 });
 
