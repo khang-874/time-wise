@@ -1,4 +1,4 @@
-import type { PomodoroSettings, PomodoroState } from "./types";
+import type { BlockSettings, PomodoroSettings, PomodoroState } from "./types";
 
 export const ALARM_FLUSH = "flush";
 export const ALARM_POMODORO_END = "pomodoro_end";
@@ -9,6 +9,8 @@ export const STORAGE_KEY_USAGE_PREFIX = "usage_";
 export const STORAGE_KEY_TRACKER = "trackerState";
 export const STORAGE_KEY_SESSIONS_PREFIX = "sessions_";
 
+export const STORAGE_KEY_BLOCK_SETTINGS = "blockSettings";
+
 export const IDLE_THRESHOLD_SECONDS = 60;
 
 export const DEFAULT_SETTINGS: PomodoroSettings = {
@@ -17,6 +19,11 @@ export const DEFAULT_SETTINGS: PomodoroSettings = {
   longBreakMinutes: 15,
   longBreakInterval: 4,
   notificationsEnabled: true,
+};
+
+export const DEFAULT_BLOCK_SETTINGS: BlockSettings = {
+  blockedDomains: [],
+  contentFilters: [],
 };
 
 export const DEFAULT_POMODORO_STATE: PomodoroState = {

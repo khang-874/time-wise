@@ -25,6 +25,11 @@ function callListener(request: unknown): Promise<unknown> {
   });
 }
 
+const mockUpdateDnr = chrome.declarativeNetRequest
+  .updateDynamicRules as ReturnType<typeof vi.fn>;
+const mockGetDnr = chrome.declarativeNetRequest
+  .getDynamicRules as ReturnType<typeof vi.fn>;
+
 beforeEach(() => {
   mockGet.mockImplementation(async (key: string | string[]) => {
     const keys = Array.isArray(key) ? key : [key];
@@ -36,6 +41,8 @@ beforeEach(() => {
   mockSet.mockResolvedValue(undefined);
   mockAlarmClear.mockResolvedValue(true);
   mockAlarmCreate.mockResolvedValue(undefined);
+  mockUpdateDnr.mockResolvedValue(undefined);
+  mockGetDnr.mockResolvedValue([]);
   registerMessageHandler();
 });
 
@@ -82,5 +89,44 @@ describe("registerMessageHandler", () => {
     })) as { type: string };
     expect(response.type).toBe("POMODORO_STATE");
     expect(mockSet).toHaveBeenCalledWith({ settings: DEFAULT_SETTINGS });
+  });
+});
+
+describe("block message handling", () => {
+  it("GET_BLOCK_SETTINGS returns BLOCK_SETTINGS", async () => {
+    const response = (await callListener({ type: "GET_BLOCK_SETTINGS" })) as { type: string };
+    expect(response.type).toBe("BLOCK_SETTINGS");
+  });
+
+  it("ADD_BLOCKED_DOMAIN returns BLOCK_SETTINGS", async () => {
+    const response = (await callListener({
+      type: "ADD_BLOCKED_DOMAIN",
+      payload: { hostname: "example.com" },
+    })) as { type: string };
+    expect(response.type).toBe("BLOCK_SETTINGS");
+  });
+
+  it("REMOVE_BLOCKED_DOMAIN returns BLOCK_SETTINGS", async () => {
+    const response = (await callListener({
+      type: "REMOVE_BLOCKED_DOMAIN",
+      payload: { hostname: "example.com" },
+    })) as { type: string };
+    expect(response.type).toBe("BLOCK_SETTINGS");
+  });
+
+  it("ADD_CONTENT_FILTER returns BLOCK_SETTINGS", async () => {
+    const response = (await callListener({
+      type: "ADD_CONTENT_FILTER",
+      payload: { platform: "youtube", keyword: "crypto" },
+    })) as { type: string };
+    expect(response.type).toBe("BLOCK_SETTINGS");
+  });
+
+  it("REMOVE_CONTENT_FILTER returns BLOCK_SETTINGS", async () => {
+    const response = (await callListener({
+      type: "REMOVE_CONTENT_FILTER",
+      payload: { id: "some-id" },
+    })) as { type: string };
+    expect(response.type).toBe("BLOCK_SETTINGS");
   });
 });

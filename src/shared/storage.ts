@@ -7,6 +7,7 @@
  */
 
 import type {
+  BlockSettings,
   DailyUsage,
   PomodoroSession,
   PomodoroSettings,
@@ -14,8 +15,10 @@ import type {
   TrackerState,
 } from "./types";
 import {
+  DEFAULT_BLOCK_SETTINGS,
   DEFAULT_POMODORO_STATE,
   DEFAULT_SETTINGS,
+  STORAGE_KEY_BLOCK_SETTINGS,
   STORAGE_KEY_POMODORO,
   STORAGE_KEY_SESSIONS_PREFIX,
   STORAGE_KEY_SETTINGS,
@@ -161,4 +164,13 @@ export async function getTrackerState(): Promise<TrackerState> {
 
 export async function setTrackerState(state: TrackerState): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEY_TRACKER]: state });
+}
+
+export async function getBlockSettings(): Promise<BlockSettings> {
+  const result = await chrome.storage.local.get(STORAGE_KEY_BLOCK_SETTINGS);
+  return (result[STORAGE_KEY_BLOCK_SETTINGS] as BlockSettings) ?? DEFAULT_BLOCK_SETTINGS;
+}
+
+export async function setBlockSettings(settings: BlockSettings): Promise<void> {
+  await chrome.storage.local.set({ [STORAGE_KEY_BLOCK_SETTINGS]: settings });
 }

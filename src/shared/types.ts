@@ -96,6 +96,39 @@ export interface TrackerState {
   lastPersistedAt: number | null;
 }
 
+/** Platforms that content filtering understands. */
+export type ContentFilterPlatform = "youtube" | "reddit" | "generic";
+
+/** Active tab in the popup UI. */
+export type AppTab = "stats" | "pomodoro" | "block";
+
+/** A single entry in the domain blocklist. */
+export interface BlockedDomain {
+  /** Bare hostname, e.g. `"facebook.com"` (no `www.` prefix). */
+  hostname: string;
+  /** Stable integer ID of the corresponding `declarativeNetRequest` dynamic rule. */
+  ruleId: number;
+  /** Epoch ms when the domain was added. */
+  addedAt: number;
+}
+
+/** A single keyword/hashtag filter for hiding content in feeds and blocking direct navigation. */
+export interface ContentFilter {
+  /** Stable random ID used as React key and for removal. */
+  id: string;
+  platform: ContentFilterPlatform;
+  /** Case-insensitive substring matched against content text. */
+  keyword: string;
+  /** Epoch ms when this filter was added. */
+  addedAt: number;
+}
+
+/** Persisted block feature configuration. */
+export interface BlockSettings {
+  blockedDomains: BlockedDomain[];
+  contentFilters: ContentFilter[];
+}
+
 /**
  * Typed messages sent from the popup to the background service worker.
  * All variants are handled by `src/background/messageHandler.ts`.
@@ -111,11 +144,17 @@ export type PopupRequest =
   /** Flushes the in-progress session to storage before reading today's usage. */
   | { type: "FLUSH_TIME" }
   | { type: "SET_TASK"; payload: { task: string } }
-  | { type: "COMPLETE_TASK" };
+  | { type: "COMPLETE_TASK" }
+  | { type: "GET_BLOCK_SETTINGS" }
+  | { type: "ADD_BLOCKED_DOMAIN"; payload: { hostname: string } }
+  | { type: "REMOVE_BLOCKED_DOMAIN"; payload: { hostname: string } }
+  | { type: "ADD_CONTENT_FILTER"; payload: { platform: ContentFilterPlatform; keyword: string } }
+  | { type: "REMOVE_CONTENT_FILTER"; payload: { id: string } };
 
 /** Typed responses returned by the background service worker to the popup. */
 export type PopupResponse =
   | { type: "POMODORO_STATE"; payload: PomodoroState }
   | { type: "USAGE"; payload: DailyUsage }
+  | { type: "BLOCK_SETTINGS"; payload: BlockSettings }
   | { type: "OK" }
   | { type: "ERROR"; message: string };

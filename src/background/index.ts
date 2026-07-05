@@ -12,6 +12,7 @@ import {
 } from "./timeTracker";
 import { handleAlarm } from "./pomodoroTimer";
 import { registerMessageHandler } from "./messageHandler";
+import { syncDnrRulesOnStartup } from "./blockManager";
 
 // Tab tracking
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
@@ -44,3 +45,6 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
 // Message handler
 registerMessageHandler();
+
+// Block feature: re-sync DNR rules on SW startup (rules are lost after extension updates)
+syncDnrRulesOnStartup().catch(console.error);

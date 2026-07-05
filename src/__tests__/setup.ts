@@ -41,9 +41,14 @@ const chromeMock = {
   notifications: {
     create: vi.fn(),
   },
+  declarativeNetRequest: {
+    updateDynamicRules: vi.fn(),
+    getDynamicRules: vi.fn(),
+  },
 };
 
 vi.stubGlobal("chrome", chromeMock);
+vi.stubGlobal("crypto", { randomUUID: vi.fn().mockReturnValue("test-uuid-1234") });
 
 beforeEach(() => {
   vi.clearAllMocks();

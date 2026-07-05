@@ -7,7 +7,13 @@
  */
 
 import type { PopupRequest, PopupResponse } from "../shared/types";
-import { getUsage, setSettings } from "../shared/storage";
+import { getBlockSettings, getUsage, setSettings } from "../shared/storage";
+import {
+  addBlockedDomain,
+  addContentFilter,
+  removeBlockedDomain,
+  removeContentFilter,
+} from "./blockManager";
 import {
   startTimer,
   pauseTimer,
@@ -86,6 +92,26 @@ async function handleMessage(request: PopupRequest): Promise<PopupResponse> {
     case "COMPLETE_TASK": {
       const state = await completeTask();
       return { type: "POMODORO_STATE", payload: state };
+    }
+    case "GET_BLOCK_SETTINGS": {
+      const blockSettings = await getBlockSettings();
+      return { type: "BLOCK_SETTINGS", payload: blockSettings };
+    }
+    case "ADD_BLOCKED_DOMAIN": {
+      const blockSettings = await addBlockedDomain(request.payload.hostname);
+      return { type: "BLOCK_SETTINGS", payload: blockSettings };
+    }
+    case "REMOVE_BLOCKED_DOMAIN": {
+      const blockSettings = await removeBlockedDomain(request.payload.hostname);
+      return { type: "BLOCK_SETTINGS", payload: blockSettings };
+    }
+    case "ADD_CONTENT_FILTER": {
+      const blockSettings = await addContentFilter(request.payload.platform, request.payload.keyword);
+      return { type: "BLOCK_SETTINGS", payload: blockSettings };
+    }
+    case "REMOVE_CONTENT_FILTER": {
+      const blockSettings = await removeContentFilter(request.payload.id);
+      return { type: "BLOCK_SETTINGS", payload: blockSettings };
     }
   }
 }
