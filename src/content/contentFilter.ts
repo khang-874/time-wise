@@ -64,16 +64,18 @@ function showFilterOverlay(reason: string): void {
  */
 function getYoutubeFeedItemText(item: HTMLElement): string {
   const parts: string[] = [];
-  // Title
+  // Video title (videos and shorts)
   parts.push(item.querySelector<HTMLElement>("#video-title, yt-formatted-string#video-title")?.textContent ?? "");
-  // Channel name — try the inner formatted string first for precision, fall back to the element
+  // Channel name in video cards
   parts.push(
     item.querySelector<HTMLElement>(
       "ytd-channel-name yt-formatted-string, ytd-channel-name #text, #owner-text yt-formatted-string"
     )?.textContent ?? ""
   );
-  // Description snippet — present in search results (ytd-video-renderer), not in home feed
-  parts.push(item.querySelector<HTMLElement>("#description-text")?.textContent ?? "");
+  // Channel card name (ytd-channel-renderer uses a heading, not #video-title)
+  parts.push(item.querySelector<HTMLElement>("#channel-title yt-formatted-string, #channel-title")?.textContent ?? "");
+  // Channel card description (shown in channel search results)
+  parts.push(item.querySelector<HTMLElement>("#description-text, yt-formatted-string#description")?.textContent ?? "");
   // Hashtag chips
   item.querySelectorAll<HTMLElement>("yt-chip-cloud-chip-renderer, a[href*='hashtag']").forEach((el) => {
     parts.push(el.textContent ?? "");
@@ -113,15 +115,27 @@ function getYoutubeWatchPageText(): string {
 }
 
 function filterYoutubeFeeds(root: Element | Document = document): void {
-  const selectors = [
-    "ytd-rich-item-renderer",
-    "ytd-video-renderer",
-    "ytd-compact-video-renderer",
-    "ytd-reel-item-renderer",
+  // Individual video/short/channel cards
+  const cardSelectors = [
+    "ytd-rich-item-renderer",       // home feed videos
+    "ytd-video-renderer",           // search result videos
+    "ytd-compact-video-renderer",   // sidebar videos
+    "ytd-reel-item-renderer",       // shorts in shelf
+    "ytd-shorts-lockup-view-model", // newer shorts card format
+    "ytd-channel-renderer",         // channel cards in search results
   ].join(",");
-  root.querySelectorAll<HTMLElement>(selectors).forEach((item) => {
+
+  root.querySelectorAll<HTMLElement>(cardSelectors).forEach((item) => {
     if (shouldHideYoutubeItem(getYoutubeFeedItemText(item), currentFilters)) {
       item.style.display = "none";
+    }
+  });
+
+  // After hiding individual shorts, collapse the entire shelf if every item inside is hidden
+  root.querySelectorAll<HTMLElement>("ytd-reel-shelf-renderer, ytd-shorts-shelf-renderer").forEach((shelf) => {
+    const items = shelf.querySelectorAll<HTMLElement>("ytd-reel-item-renderer, ytd-shorts-lockup-view-model");
+    if (items.length > 0 && Array.from(items).every((el) => el.style.display === "none")) {
+      (shelf.closest("ytd-rich-section-renderer") as HTMLElement | null ?? shelf).style.display = "none";
     }
   });
 }
