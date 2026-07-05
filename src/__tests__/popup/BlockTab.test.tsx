@@ -241,13 +241,13 @@ describe("BlockTab", () => {
         .mockResolvedValueOnce({ type: "BLOCK_SETTINGS", payload: makeSettings() });
       render(<BlockTab />);
       await waitFor(() => screen.getByLabelText("Platform"));
-      fireEvent.change(screen.getByLabelText("Platform"), { target: { value: "reddit" } });
+      fireEvent.change(screen.getByLabelText("Platform"), { target: { value: "generic" } });
       fireEvent.change(screen.getByLabelText("Filter keyword"), { target: { value: "gaming" } });
       fireEvent.click(screen.getByLabelText("Add filter"));
       await waitFor(() =>
         expect(mockSendMessage).toHaveBeenCalledWith({
           type: "ADD_CONTENT_FILTER",
-          payload: { platform: "reddit", keyword: "gaming" },
+          payload: { platform: "generic", keyword: "gaming" },
         })
       );
     });

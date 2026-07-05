@@ -12,7 +12,6 @@ interface Props {
 
 const PLATFORMS: { value: ContentFilterPlatform; label: string }[] = [
   { value: "youtube", label: "YouTube" },
-  { value: "reddit", label: "Reddit" },
   { value: "generic", label: "Any site" },
 ];
 

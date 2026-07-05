@@ -97,7 +97,7 @@ export interface TrackerState {
 }
 
 /** Platforms that content filtering understands. */
-export type ContentFilterPlatform = "youtube" | "reddit" | "generic";
+export type ContentFilterPlatform = "youtube" | "generic";
 
 /** Active tab in the popup UI. */
 export type AppTab = "stats" | "pomodoro" | "block";

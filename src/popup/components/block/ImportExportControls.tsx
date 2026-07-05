@@ -18,7 +18,7 @@ function isHostnameEntry(value: unknown): value is { hostname: string } {
 function isFilterEntry(value: unknown): value is { platform: ContentFilterPlatform; keyword: string } {
   if (typeof value !== "object" || value === null) return false;
   const v = value as { platform?: unknown; keyword?: unknown };
-  return typeof v.keyword === "string" && (v.platform === "youtube" || v.platform === "reddit" || v.platform === "generic");
+  return typeof v.keyword === "string" && (v.platform === "youtube" || v.platform === "generic");
 }
 
 export default function ImportExportControls({ blockSettings, onImport }: Props) {

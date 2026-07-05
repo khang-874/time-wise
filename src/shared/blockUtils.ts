@@ -13,22 +13,6 @@ export function shouldHideYoutubeItem(titleText: string, filters: ContentFilter[
     .some((f) => matchesKeyword(titleText, f.keyword));
 }
 
-/**
- * Returns true if any Reddit filter matches the post title or subreddit name.
- * @param subreddit - bare name without "r/" prefix, e.g. "gaming"
- */
-export function shouldHideRedditPost(
-  titleText: string,
-  subreddit: string,
-  filters: ContentFilter[]
-): boolean {
-  return filters
-    .filter((f) => f.platform === "reddit")
-    .some(
-      (f) => matchesKeyword(titleText, f.keyword) || matchesKeyword(subreddit, f.keyword)
-    );
-}
-
 /** Returns true if any generic filter matches the page title. */
 export function shouldHideGenericPage(pageTitle: string, filters: ContentFilter[]): boolean {
   return filters

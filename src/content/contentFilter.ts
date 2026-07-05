@@ -1,20 +1,15 @@
 import type { BlockSettings, ContentFilter } from "../shared/types";
-import {
-  shouldHideYoutubeItem,
-  shouldHideRedditPost,
-  shouldHideGenericPage,
-} from "../shared/blockUtils";
+import { shouldHideYoutubeItem, shouldHideGenericPage } from "../shared/blockUtils";
 
 let currentFilters: ContentFilter[] = [];
 let observer: MutationObserver | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-type Platform = "youtube" | "reddit" | "other";
+type Platform = "youtube" | "other";
 
 function getPlatform(): Platform {
   const h = window.location.hostname;
   if (h === "www.youtube.com" || h === "youtube.com") return "youtube";
-  if (h === "www.reddit.com" || h === "reddit.com") return "reddit";
   return "other";
 }
 
@@ -133,48 +128,19 @@ function checkYoutubeCurrentVideo(): void {
   }
 }
 
-function filterRedditFeeds(root: Element | Document = document): void {
-  const selectors = ["[data-testid='post-container']", ".thing"].join(",");
-  root.querySelectorAll<HTMLElement>(selectors).forEach((post) => {
-    const title = post.querySelector<HTMLElement>("h3, .title a")?.textContent ?? "";
-    const subredditEl = post.querySelector<HTMLElement>(
-      "[data-click-id='subreddit'], .subreddit"
-    );
-    const subreddit = (subredditEl?.textContent ?? "").replace(/^r\//, "");
-    if (shouldHideRedditPost(title, subreddit, currentFilters)) {
-      post.style.display = "none";
-    }
-  });
-}
-
-function checkRedditCurrentPage(): void {
-  const match = window.location.pathname.match(/^\/r\/([^/]+)/);
-  const subreddit = match?.[1] ?? "";
-  const title = document.title;
-  if (shouldHideRedditPost(title, subreddit, currentFilters)) {
-    redirectToBlockedPage("This page matches your content filter.");
-  }
-}
-
 function runFilters(): void {
   const platform = getPlatform();
   if (platform === "youtube") {
     filterYoutubeFeeds();
     checkYoutubeCurrentVideo();
-  } else if (platform === "reddit") {
-    filterRedditFeeds();
-    checkRedditCurrentPage();
-  } else {
-    if (shouldHideGenericPage(document.title, currentFilters)) {
-      redirectToBlockedPage("This page matches your content filter.");
-    }
+  } else if (shouldHideGenericPage(document.title, currentFilters)) {
+    redirectToBlockedPage("This page matches your content filter.");
   }
 }
 
 function setupObserver(): void {
   observer?.disconnect();
-  const platform = getPlatform();
-  if (platform !== "youtube" && platform !== "reddit") return;
+  if (getPlatform() !== "youtube") return;
   observer = new MutationObserver(() => {
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(runFilters, 150);

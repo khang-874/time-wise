@@ -187,7 +187,7 @@ describe("addContentFilter", () => {
   });
 
   it("assigns a non-empty id", async () => {
-    const updated = await addContentFilter("reddit", "test");
+    const updated = await addContentFilter("generic", "test");
     expect(updated.contentFilters[0].id).toBeTruthy();
   });
 
