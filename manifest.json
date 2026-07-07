@@ -8,7 +8,15 @@
     "storage",
     "idle",
     "alarms",
-    "notifications"
+    "notifications",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "web_accessible_resources": [
+    {
+      "resources": ["blocked.html"],
+      "matches": ["<all_urls>"]
+    }
   ],
   "background": {
     "service_worker": "src/background/index.ts",
@@ -18,6 +26,11 @@
     {
       "matches": ["<all_urls>"],
       "js": ["src/content/overlay.ts"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content/contentFilter.ts"],
       "run_at": "document_idle"
     }
   ],

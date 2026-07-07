@@ -21,6 +21,7 @@ export default defineConfig({
         "src/popup/main.tsx",
         "src/background/index.ts",
         "src/content/overlay.ts",
+        "src/content/contentFilter.ts",
         "src/shared/types.ts",
         "node_modules/**",
         "*.js",

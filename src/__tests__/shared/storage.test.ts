@@ -11,9 +11,10 @@ import {
   setSettings,
   getSessions,
   addSession,
+  getBlockSettings,
 } from "../../shared/storage";
 import type { PomodoroSession } from "../../shared/types";
-import { DEFAULT_POMODORO_STATE, DEFAULT_SETTINGS } from "../../shared/constants";
+import { DEFAULT_POMODORO_STATE, DEFAULT_SETTINGS, DEFAULT_BLOCK_SETTINGS } from "../../shared/constants";
 
 const mockGet = chrome.storage.local.get as ReturnType<typeof vi.fn>;
 const mockSet = chrome.storage.local.set as ReturnType<typeof vi.fn>;
@@ -200,5 +201,28 @@ describe("addSession", () => {
     expect(mockSet).toHaveBeenCalledWith({
       "sessions_2024-06-08": [existing, SESSION_STUB],
     });
+  });
+});
+
+describe("getBlockSettings", () => {
+  it("returns defaults when nothing stored", async () => {
+    mockGet.mockResolvedValue({});
+    const result = await getBlockSettings();
+    expect(result).toEqual(DEFAULT_BLOCK_SETTINGS);
+  });
+
+  it("merges stored settings over defaults, so new fields still get their default", async () => {
+    mockGet.mockResolvedValue({
+      blockSettings: { blockedDomains: [{ hostname: "example.com", ruleId: 1, addedAt: 0, removalRequestedAt: null }] },
+    });
+    const result = await getBlockSettings();
+    expect(result.blockedDomains).toHaveLength(1);
+    expect(result.blockYoutubeShorts).toBe(DEFAULT_BLOCK_SETTINGS.blockYoutubeShorts);
+  });
+
+  it("keeps an explicit stored value even when it differs from the default", async () => {
+    mockGet.mockResolvedValue({ blockSettings: { blockYoutubeShorts: false } });
+    const result = await getBlockSettings();
+    expect(result.blockYoutubeShorts).toBe(false);
   });
 });

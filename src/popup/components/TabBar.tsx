@@ -1,13 +1,14 @@
-type Tab = "stats" | "pomodoro";
+import type { AppTab } from "../../shared/types";
 
 interface Props {
-  activeTab: Tab;
-  onTabChange: (tab: Tab) => void;
+  activeTab: AppTab;
+  onTabChange: (tab: AppTab) => void;
 }
 
-const TABS: { id: Tab; label: string }[] = [
+const TABS: { id: AppTab; label: string }[] = [
   { id: "stats", label: "Stats" },
   { id: "pomodoro", label: "Pomodoro" },
+  { id: "block", label: "Block" },
 ];
 
 export default function TabBar({ activeTab, onTabChange }: Props) {

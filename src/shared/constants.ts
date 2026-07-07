@@ -1,4 +1,4 @@
-import type { PomodoroSettings, PomodoroState } from "./types";
+import type { BlockSettings, PomodoroSettings, PomodoroState } from "./types";
 
 export const ALARM_FLUSH = "flush";
 export const ALARM_POMODORO_END = "pomodoro_end";
@@ -9,7 +9,12 @@ export const STORAGE_KEY_USAGE_PREFIX = "usage_";
 export const STORAGE_KEY_TRACKER = "trackerState";
 export const STORAGE_KEY_SESSIONS_PREFIX = "sessions_";
 
+export const STORAGE_KEY_BLOCK_SETTINGS = "blockSettings";
+
 export const IDLE_THRESHOLD_SECONDS = 60;
+
+/** Minimum wait after requesting removal of a blocked domain or content filter before it can be confirmed. */
+export const REMOVAL_DELAY_MS = 60_000;
 
 export const DEFAULT_SETTINGS: PomodoroSettings = {
   workMinutes: 25,
@@ -17,6 +22,12 @@ export const DEFAULT_SETTINGS: PomodoroSettings = {
   longBreakMinutes: 15,
   longBreakInterval: 4,
   notificationsEnabled: true,
+};
+
+export const DEFAULT_BLOCK_SETTINGS: BlockSettings = {
+  blockedDomains: [],
+  contentFilters: [],
+  blockYoutubeShorts: true,
 };
 
 export const DEFAULT_POMODORO_STATE: PomodoroState = {
